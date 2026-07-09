@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบบริหารเวลาพิจารณางบประมาณ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --ink:#1a2332; --ink-soft:#4a5568; --line:#dfe3ea; --bg:#f5f6f8;
+  --panel:#ffffff; --accent:#1e5aa8; --accent-soft:#e8f0fa;
+  --ahead:#0f7a4d; --ahead-bg:#e6f4ec; --behind:#c0392b; --behind-bg:#fbeae8;
+  --warn:#b7791f; --warn-bg:#fdf6e3; --done:#8a94a6; --done-bg:#eef0f3;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"TH Sarabun New","Sarabun","Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--ink);font-size:17px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:24px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--ink);font-size:19px;font-weight:600;margin-top:4px}
+.viewbadge{background:var(--warn-bg);color:var(--warn);border:1px solid #f0d98a;padding:4px 12px;border-radius:6px;font-size:14px;font-weight:600;display:none}
+body.viewonly .viewbadge{display:inline-block}
+body.viewonly .edit-only{display:none !important}
+/* มุมมองติดตามคิว */
+.qwrap{max-width:760px;margin:0 auto;padding:20px 16px}
+.qv-header{text-align:center;margin-bottom:18px}
+.qv-header h1{font-size:24px;font-weight:700}
+.qv-sub{color:var(--ink-soft);font-size:15px;margin-top:4px}
+.qv-nowbox{background:var(--accent);color:#fff;border-radius:12px;padding:16px 20px;text-align:center;margin-bottom:16px;box-shadow:0 2px 12px rgba(30,90,168,.25)}
+.qv-nowlabel{font-size:13px;opacity:.9;letter-spacing:.5px}
+.qv-nowname{font-size:26px;font-weight:700;margin-top:2px}
+.qv-pausetag{background:rgba(255,255,255,.25);color:#fff;font-size:15px;font-weight:700;padding:4px 12px;border-radius:20px;margin-top:8px;display:inline-block;animation:pausepulse 1.5s ease-in-out infinite}
+.qv-item{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:8px}
+.qv-item.done{opacity:.55}
+.qv-item.current{border-color:var(--accent);border-width:2px;background:var(--accent-soft)}
+.qv-item.brk{background:#fff8ec;border-color:#f0d090}
+.qv-num{width:34px;height:34px;flex:0 0 34px;border-radius:50%;background:var(--done-bg);color:var(--ink-soft);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px}
+.qv-item.current .qv-num{background:var(--accent);color:#fff}
+.qv-item.done .qv-num{background:var(--ahead-bg);color:var(--ahead)}
+.qv-body{flex:1;min-width:0}
+.qv-name{font-weight:600;font-size:17px}
+.qv-meta{font-size:13px;color:var(--ink-soft);margin-top:1px}
+.qv-status{font-size:13px;font-weight:600;padding:3px 12px;border-radius:20px;white-space:nowrap}
+.qv-status.q{background:var(--done-bg);color:var(--done)}
+.qv-status.cur{background:var(--accent);color:#fff}
+.qv-status.done{background:var(--ahead-bg);color:var(--ahead)}
+.qv-foot{text-align:center;color:var(--ink-soft);font-size:13px;margin-top:16px}
+.qv-empty{text-align:center;color:var(--ink-soft);padding:40px 20px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.panel h2{font-size:16px;font-weight:700;color:var(--ink-soft);margin-bottom:12px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:1fr 1fr}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:720px){.g4{grid-template-columns:1fr 1fr}.g2{grid-template-columns:1fr}}
+label{display:block;font-size:14px;color:var(--ink-soft);margin-bottom:4px;font-weight:600}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:16px;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+button{font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;border-radius:7px;transition:.12s}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent)}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-danger{background:var(--behind);color:#fff;border-color:var(--behind)}
+.btn-danger:hover{background:#a5301f;color:#fff;border-color:#a5301f}
+.btn-primary:hover{background:#17488a;color:#fff}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.mini{padding:4px 9px;font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:720px){.stats{grid-template-columns:1fr 1fr}}
+.stat{background:var(--accent-soft);border-radius:9px;padding:12px 14px}
+.stat .n{font-size:34px;font-weight:800;line-height:1.1}
+.stat .l{font-size:15px;color:var(--ink-soft);margin-top:4px;font-weight:500}
+.daylist{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.dayrow{display:grid;grid-template-columns:34px 150px 1fr;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
+.dayrow:last-child{border-bottom:none}
+.dayrow.off{background:#fafbfc;opacity:.5}
+.dayrow .dname{font-weight:600;font-size:15px}
+.dayrow .times{display:grid;grid-template-columns:auto auto 1fr 1fr;gap:10px}
+.dayrow .times .mini-f:nth-child(3){border-left:1px solid var(--line);padding-left:10px}
+@media(max-width:820px){.dayrow{grid-template-columns:30px 130px 1fr}.dayrow .times{grid-template-columns:1fr 1fr}}
+.dayrow .times .mini-f label{font-size:11px;margin-bottom:2px}
+.dayrow .times input{padding:5px 7px;font-size:14px;text-align:center}
+.daytabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px}
+.daytab{flex:0 0 auto;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap;text-align:center}
+.daytab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.daytab .d2{font-size:12px;opacity:.85;font-weight:400}
+.daytab.over{outline:2px dashed var(--accent)}
+.daycfg{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:12px}
+.daycfg .f{min-width:104px}
+.daycfg .dlabel{font-size:15px;font-weight:700;color:var(--accent);align-self:center}
+.zone{border:1px solid var(--line);border-radius:9px;padding:8px 12px 10px;background:#fafbfc}
+.zonelabel{font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;letter-spacing:.2px}
+.zonefields{display:flex;gap:12px;align-items:flex-end}
+.zonefields .f{min-width:auto}
+.dayclock{margin-left:auto;text-align:right}
+.dayclock .big{font-size:20px;font-weight:700}
+.dayclock .lbl{font-size:12px;color:var(--ink-soft)}
+.dayclock .nextbud{color:var(--ahead);font-weight:600;background:var(--ahead-bg);padding:3px 8px;border-radius:6px;display:inline-block}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:13px;color:var(--ink-soft);font-weight:700;padding:8px 10px;border-bottom:2px solid var(--line);background:#fff}
+td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:15px;vertical-align:middle}
+td:last-child .mini{margin:2px 1px}
+tr.done td{color:var(--done)}
+tr.current{background:var(--accent-soft)}
+tr.current td{font-weight:600}
+.orgname{font-weight:600}
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12.5px;font-weight:600}
+.pill.q{background:var(--done-bg);color:var(--done)}
+.pill.cur{background:var(--accent);color:#fff}
+.pill.done{background:var(--ahead-bg);color:var(--ahead)}
+.delta.plus{color:var(--ahead);font-weight:700}
+.delta.minus{color:var(--behind);font-weight:700}
+.timecell,.budcell{font-variant-numeric:tabular-nums;white-space:nowrap}
+.budcell{font-weight:600}
+.empty{text-align:center;color:var(--ink-soft);padding:30px 20px}
+.hint{font-size:13px;color:var(--ink-soft);margin-top:6px;line-height:1.4}
+.livebar{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin-bottom:12px;flex-wrap:wrap}
+.livedot{width:9px;height:9px;border-radius:50%;background:var(--ahead);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.livebar .now{font-variant-numeric:tabular-nums;font-weight:700;font-size:18px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:15px;opacity:0;pointer-events:none;transition:.2s;z-index:50}
+.toast.show{opacity:1}
+details.help{margin-top:10px}
+details.help summary{cursor:pointer;font-size:14px;color:var(--accent);font-weight:600}
+details.help .body{font-size:14px;color:var(--ink-soft);margin-top:8px;line-height:1.6}
+.step{font-size:13px;background:var(--accent);color:#fff;border-radius:20px;padding:1px 9px;margin-right:6px}
+.datewrap{position:relative}
+.datebtn{width:100%;text-align:left;font-size:16px;font-weight:600;color:var(--ink);padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:7px}
+.datebtn.set{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.datehidden{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none}
+.timesel{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:7px;padding:2px 4px;background:#fff}
+.timesel select{border:none;padding:4px 2px;font-size:15px;font-family:inherit;background:transparent;font-variant-numeric:tabular-nums;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:center}
+.timesel select:focus{outline:none}
+.timesel .colon{font-weight:700;color:var(--ink-soft)}
+.timesel.mini select{font-size:14px;padding:3px 1px}
+.pool{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:#fff}
+.pool h3{font-size:14px;color:var(--ink-soft);margin-bottom:8px;font-weight:700}
+.poolchips{display:flex;flex-wrap:wrap;gap:6px;max-height:150px;overflow:auto}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--done-bg);border:1px solid var(--line);border-radius:20px;padding:3px 6px 3px 12px;font-size:14px}
+.chip button{padding:1px 8px;font-size:12px;border-radius:14px;border:none;background:var(--accent);color:#fff}
+.chip button:hover{background:#17488a;color:#fff}
+.chip.susp{background:var(--behind-bg);border-color:#f0c0ba}
+.chip.susp .susptag{font-size:11px;font-weight:700;color:var(--behind);margin-right:2px}
+.btn-suspend{background:var(--behind);color:#fff;border-color:var(--behind)}
+.btn-suspend:hover{background:#a5301f;color:#fff;border-color:#a5301f}
+.btn-break{background:var(--warn);color:#fff;border-color:var(--warn)}
+.btn-break:hover{background:#96650f;color:#fff;border-color:#96650f}
+.pill.susp{background:var(--behind-bg);color:var(--behind)}
+/* ชิปพักในคลัง */
+.chip.brk{background:#fff4e0;border-color:#f0d090}
+.chip.brk .brktag{font-size:11px;font-weight:700;color:var(--warn);margin-right:2px}
+.chip.brk button{background:var(--warn)}
+.chip.brk button:hover{background:#96650f}
+.chip.disabled{opacity:.4;pointer-events:none}
+/* แถวพักในคิว */
+tr.breakrow td{background:#fff8ec;border-top:2px solid #f0d090;border-bottom:2px solid #f0d090}
+.pill-pause{background:var(--behind);color:#fff;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;animation:pausepulse 1.5s ease-in-out infinite}
+@keyframes pausepulse{0%,100%{opacity:1}50%{opacity:.55}}
+tr.pauserow td{padding:0}
+.pausebar{background:var(--behind);color:#fff;text-align:center;font-weight:700;font-size:15px;padding:8px;letter-spacing:1px;animation:pausepulse 1.5s ease-in-out infinite}
+.expandbtn.resuming{background:var(--ahead);color:#fff;border-color:var(--ahead)}
+.btn-pausemeeting{background:var(--behind);color:#fff;border-color:var(--behind)}
+.btn-pausemeeting:hover{background:#a5301f;color:#fff;border-color:#a5301f}
+.btn-pausemeeting.resuming{background:var(--ahead);color:#fff;border-color:var(--ahead)}
+.btn-pausemeeting.resuming:hover{background:#1a7a3f;color:#fff;border-color:#1a7a3f}
+tr.breakrow .brklabel{font-weight:700;color:var(--warn);display:flex;align-items:center;gap:6px}
+/* ปุ่มขยายเต็มจอ + overlay */
+.expandbar{display:flex;justify-content:flex-end;margin-bottom:6px}
+.expandbtn{font-size:13px;padding:5px 12px;display:flex;align-items:center;gap:6px}
+#queueSection.fullscreen{position:fixed;inset:0;z-index:200;background:var(--bg);padding:16px;overflow:auto;margin:0}
+#queueSection.fullscreen .panel{max-width:1400px;margin-left:auto;margin-right:auto}
+body.qfs-open{overflow:hidden}
+.qbtn{padding:2px 7px;font-size:13px;line-height:1;margin:0 1px}
+.selrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.selrow select{max-width:340px}
+@media print{.edit-only,.livebar,.daytabs,.pool,header button{display:none!important}.panel{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>ระบบบริหารเวลาพิจารณางบประมาณ</h1>
+    <div class="sub">คณะอนุกรรมาธิการที่ดินและสิ่งก่อสร้าง · ร่าง พ.ร.บ.งบประมาณ พ.ศ. ๒๕๗๐</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="viewbadge">โหมดดูอย่างเดียว · แก้ไขไม่ได้</span>
+    <button class="edit-only" onclick="exportExcel()">Export Excel</button>
+    <button class="edit-only" onclick="exportPDF()">Export PDF</button>
+    <button class="edit-only" onclick="openShareDialog()">คัดลอกลิงก์แชร์</button>
+    <button class="edit-only" onclick="backToSetup()">แก้ไขการตั้งค่า</button>
+  </div>
+</header>
+
+<div id="setupWrap" class="edit-only">
+  <div class="panel">
+    <h2><span class="step">๑</span>ช่วงวันประชุม และรายชื่อหน่วยงาน</h2>
+    <div class="grid g4">
+      <div><label>วันเริ่มต้น</label>
+        <div class="datewrap"><button type="button" class="datebtn" id="startBtn" onclick="openPicker('startDate')">— เลือกวันจากปฏิทิน —</button><input id="startDate" type="date" class="datehidden" onchange="onDatePick('startDate','startBtn')"></div></div>
+      <div><label>วันสิ้นสุด</label>
+        <div class="datewrap"><button type="button" class="datebtn" id="endBtn" onclick="openPicker('endDate')">— เลือกวันจากปฏิทิน —</button><input id="endDate" type="date" class="datehidden" onchange="onDatePick('endDate','endBtn')"></div></div>
+      <div style="grid-column:span 2;display:flex;align-items:flex-end;gap:8px">
+        <button class="btn-primary" onclick="listDays()">แสดงรายการวัน &rarr;</button>
+        <span class="hint" style="margin:0">คงที่: วันเริ่ม–สิ้นสุด · เลือกวันประชุมได้เองด้านล่าง</span>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <label>รายชื่อหน่วยงาน (บรรทัดละ ๑ หน่วยงาน)</label>
+      <textarea id="orgNames" rows="4" placeholder="กรมที่ดิน&#10;กรมโยธาธิการและผังเมือง&#10;..."></textarea>
+      <div class="btn-row">
+        <button onclick="document.getElementById('xlsxInput').click()">นำเข้าจาก Excel</button>
+        <input type="file" id="xlsxInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="importOrgs(event)">
+        <span class="hint" style="margin:0">Excel: คอลัมน์แรก = ชื่อหน่วยงาน · <span id="orgCountLbl">๐ หน่วยงาน</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="dayPickPanel" style="display:none">
+    <h2><span class="step">๒</span>เลือกวันที่จะประชุม และตั้งเวลาแต่ละวัน</h2>
+    <div class="selrow">
+      <button class="mini" onclick="pickAll(true)">เลือกทั้งหมด</button>
+      <button class="mini" onclick="pickAll(false)">ไม่เลือกเลย</button>
+      <button class="mini" onclick="pickWeekdays()">เฉพาะ จ.–ศ.</button>
+    </div>
+    <div class="grid g4" style="margin-bottom:10px">
+      <div><label>ตั้งเวลามาตรฐาน (เริ่ม / เลิก)</label>
+        <div style="display:flex;gap:6px;align-items:center"><span id="wBulkStart"></span><span>–</span><span id="wBulkEnd"></span></div></div>
+      <div><label>พักเที่ยง (เริ่ม–สิ้นสุด)</label>
+        <div style="display:flex;gap:6px;align-items:center"><span id="wBulkLunchS"></span><span>–</span><span id="wBulkLunchE"></span></div></div>
+      <div><label>พักเย็น (เริ่ม–สิ้นสุด)</label>
+        <div style="display:flex;gap:6px;align-items:center"><span id="wBulkDinnerS"></span><span>–</span><span id="wBulkDinnerE"></span></div></div>
+      <div style="display:flex;align-items:flex-end"><button onclick="applyBulk()">ใส่ค่าให้วันที่เลือก</button></div>
+    </div>
+    <div class="daylist" id="dayList"></div>
+
+    <div style="margin-top:14px">
+      <label>การจัดคิวหน่วยงานเข้าแต่ละวัน</label>
+      <div class="selrow">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0;cursor:pointer"><input type="radio" name="distMode" value="auto" checked style="width:auto"> กระจายให้ก่อน (เฉลี่ยตามเวลาที่มี) แล้วค่อยสลับ</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0;cursor:pointer"><input type="radio" name="distMode" value="empty" style="width:auto"> เว้นว่างไว้ จัดเองทั้งหมด</label>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="buildPlan()">สร้างแผน / คำนวณเวลา</button>
+      <button class="btn-danger" onclick="resetAll()">🗑 ล้างข้อมูลทั้งหมด</button>
+    </div>
+    <div class="hint" style="margin-top:8px">หมายเหตุ: ทุกครั้งที่กด "สร้างแผน / คำนวณเวลา" ระบบจะกระจายหน่วยงานใหม่ตามเวลาประชุมล่าสุดของแต่ละวัน (วันที่มีเวลามากได้หน่วยงานมากกว่า) — หากเคยเริ่มพิจารณาไปแล้ว ข้อมูลการพิจารณาจะถูกล้าง</div>
+  </div>
+</div>
+
+<div id="resultWrap" style="display:none">
+  <div class="panel">
+    <h2>ภาพรวมเวลาที่มี</h2>
+    <div class="stats">
+      <div class="stat"><div class="n" id="stDays">–</div><div class="l">วันประชุม</div></div>
+      <div class="stat"><div class="n" id="stHours">–</div><div class="l">ชั่วโมงพิจารณารวม (หักพัก)</div></div>
+      <div class="stat"><div class="n" id="stOrgs">–</div><div class="l">หน่วยงานที่จัดแล้ว / ทั้งหมด</div></div>
+      <div class="stat"><div class="n" id="stAvg">–</div><div class="l">เฉลี่ยต่อหน่วยงาน</div></div>
+    </div>
+  </div>
+  <div class="livebar" style="display:none">
+    <span class="livedot"></span><span>เวลาปัจจุบันที่ใช้คำนวณ:</span>
+    <span class="now" id="liveNow">–</span>
+    <span class="edit-only" style="margin-left:auto;font-size:13px;color:var(--ink-soft)">
+      ปรับเวลาอ้างอิง: <span id="wClockOverride"></span>
+      <button class="mini" onclick="setClock()">ตั้ง</button>
+      <button class="mini" onclick="useRealClock()">ใช้เวลาจริง</button>
+    </span>
+  </div>
+  <div class="daytabs" id="dayTabs"></div>
+  <div class="daycfg edit-only" style="display:none">
+    <div class="dlabel" id="cfgDayLabel">–</div>
+    <div class="zone">
+      <div class="zonelabel">⏰ เวลาประชุม <span style="font-weight:400;color:var(--accent)">(แก้ที่นี่มีผลทันที)</span></div>
+      <div class="zonefields">
+        <div class="f"><label>เริ่ม</label><span id="wCfgStart"></span></div>
+        <div class="f"><label>เลิก</label><span id="wCfgEnd"></span></div>
+      </div>
+    </div>
+    <div class="zone">
+      <div class="zonelabel">☕ เวลาพัก</div>
+      <div class="zonefields">
+        <div class="f"><label>พักเที่ยง</label><div style="display:flex;gap:4px;align-items:center"><span id="wCfgLunchS"></span><span>–</span><span id="wCfgLunchE"></span></div></div>
+        <div class="f"><label>พักเย็น</label><div style="display:flex;gap:4px;align-items:center"><span id="wCfgDinnerS"></span><span>–</span><span id="wCfgDinnerE"></span></div></div>
+      </div>
+    </div>
+    <div class="zone">
+      <div class="zonelabel">🎯 เป้าหมาย</div>
+      <div class="zonefields">
+        <div class="f" style="min-width:70px"><label>เป้า(หน่วย)</label><input id="cfgTarget" type="number" min="0" onchange="updateDayCfg()" style="text-align:center"></div>
+      </div>
+    </div>
+    <div class="dayclock">
+      <div class="big" id="dayNet">–</div>
+      <div class="lbl">งบเริ่มต้น: สุทธิ ÷ <span id="dayOrgCount">0</span> = <b id="dayPer">–</b></div>
+      <div class="lbl nextbud" id="nextBudLine" style="margin-top:4px"></div>
+    </div>
+  </div>
+
+  <div id="queueSection">
+  <div class="expandbar edit-only" style="justify-content:space-between">
+    <button class="expandbtn btn-pausemeeting" id="pauseMeetingBtn" onclick="toggleMeetingPause()">⏸ พักการประชุม</button>
+    <button class="expandbtn" id="expandBtn" onclick="toggleFullscreen()"><span id="expandIcon">⤢</span> <span id="expandLabel">ขยายคิวเต็มจอ</span></button>
+  </div>
+
+  <div class="pool edit-only" id="poolBox">
+    <h3>คลังหน่วยงานที่ยังไม่จัดวัน (<span id="poolCount">0</span>) — กด "＋ วันนี้" เพื่อเพิ่มเข้าวันที่เปิดอยู่</h3>
+    <div class="poolchips" id="poolChips"></div>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
+      <div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:6px">ก้อนเวลาพัก (แต่ละวันใส่ได้อย่างละ 1 ครั้ง)</div>
+      <div class="poolchips" id="breakChips"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="padding:0;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th style="width:70px">คิว</th><th>หน่วยงาน</th><th style="width:96px">สถานะ</th>
+          <th style="width:100px">งบเวลา</th><th style="width:96px">เริ่มตามแผน</th><th style="width:96px">จบตามแผน</th><th style="width:78px">เริ่มจริง</th>
+          <th style="width:78px">จบจริง</th><th style="width:86px">ใช้จริง</th>
+          <th style="width:92px">+ / –</th><th style="width:230px" class="edit-only">การทำงาน</th>
+        </tr></thead>
+        <tbody id="orgBody"></tbody>
+      </table>
+    </div>
+    <div id="emptyDay" class="empty" style="display:none">ยังไม่มีหน่วยงานในวันนี้ — เพิ่มจากคลังด้านบน</div>
+  </div>
+  </div>
+
+  <details class="help">
+    <summary>วิธีการคำนวณเวลา</summary>
+    <div class="body">
+      <b>งบเวลาเริ่มต้น</b> = เวลาพิจารณาสุทธิของวัน ÷ จำนวนหน่วยงานที่จัดไว้ในวันนั้น<br>
+      <b>เมื่อปิดหน่วยงาน</b> คำนวณใหม่: งบของหน่วยที่เหลือ = (เวลาเลิก − เวลาจบล่าสุด − พักที่ยังไม่ผ่าน) ÷ จำนวนที่เหลือ<br>
+      เสร็จเร็ว → หน่วยที่เหลือได้เวลาเพิ่ม · เสร็จช้า → ถูกบีบลง · คอลัมน์ +/− = เทียบจริงกับงบ
+    </div>
+  </details>
+</div>
+
+</div>
+
+<!-- ============ มุมมองติดตามคิว (public queue view) ============ -->
+<div class="qwrap" id="queueViewWrap" style="display:none">
+  <div class="qv-header">
+    <h1 id="qvTitle">ลำดับคิวการพิจารณางบประมาณ</h1>
+    <div class="qv-sub">คณะอนุกรรมาธิการที่ดินและสิ่งก่อสร้าง · ร่าง พ.ร.บ.งบประมาณ พ.ศ. ๒๕๗๐</div>
+  </div>
+  <div class="daytabs" id="qvDayTabs"></div>
+  <div class="qv-nowbox" id="qvNowBox" style="display:none">
+    <div class="qv-nowlabel">กำลังพิจารณาขณะนี้</div>
+    <div class="qv-nowname" id="qvNowName">–</div>
+  </div>
+  <div id="qvList"></div>
+  <div class="qv-foot" id="qvFoot"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="shareDialog" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:24px;max-width:460px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.25)">
+    <h2 style="font-size:19px;font-weight:700;margin-bottom:6px">เลือกประเภทลิงก์แชร์</h2>
+    <p style="font-size:14px;color:var(--ink-soft);margin-bottom:16px">ทุกลิงก์เป็นแบบดูอย่างเดียว แก้ไขไม่ได้</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="shareLink();closeShareDialog()" style="text-align:left;padding:12px 14px">
+        <div style="font-weight:700">📋 ตารางบริหารเต็ม</div>
+        <div style="font-size:13px;color:var(--ink-soft);font-weight:400;margin-top:2px">แสดงงบเวลา เริ่มจริง จบจริง ทุกอย่าง (สำหรับทีมงาน)</div>
+      </button>
+      <button onclick="shareQueueLink(false);closeShareDialog()" style="text-align:left;padding:12px 14px">
+        <div style="font-weight:700">📍 ติดตามคิว (ไม่แสดงเวลา)</div>
+        <div style="font-size:13px;color:var(--ink-soft);font-weight:400;margin-top:2px">แสดงแค่ลำดับคิวและสถานะ (สำหรับหน่วยงานที่รอ)</div>
+      </button>
+      <button onclick="shareQueueLink(true);closeShareDialog()" style="text-align:left;padding:12px 14px">
+        <div style="font-weight:700">⏱️ ติดตามคิว (แสดงเวลาที่ใช้จริง)</div>
+        <div style="font-size:13px;color:var(--ink-soft);font-weight:400;margin-top:2px">แสดงลำดับคิว + เวลาที่แต่ละหน่วยใช้ไป + เวลาพัก</div>
+      </button>
+    </div>
+    <div style="text-align:right;margin-top:16px"><button onclick="closeShareDialog()">ปิด</button></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const STORE_KEY="budgetSched_v3";
+const BACKEND_URL="https://script.google.com/macros/s/AKfycbwe3m4CEY_Gf1T4s_eJKbHCMwX1Hyeuootuyemp4C_yKUSlVPVmtWFy4RSaLiS3pAhe/exec"; // Apps Script Web App (/exec)
+let isAdmin=false; // ?admin=1 = แอดมิน (แก้ได้) / ไม่มี = ผู้ติดตาม (ดูอย่างเดียว)
+const THDAYS=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
+const THMON_FULL=["","มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const THMON_SHORT=["","ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+let state=null, setupDays=[], orgNamesArr=[], activeDay=0, clockOverrideMin=null;
+
+function beToGreg(o){return new Date(o.yBE-543,o.mo-1,o.d);}
+function gregToBE(dt){return{d:dt.getDate(),mo:dt.getMonth()+1,yBE:dt.getFullYear()+543};}
+function beKey(be){return be?(be.yBE+"-"+be.mo+"-"+be.d):"";}
+function fmtBEfull(o){return o.d+" "+THMON_FULL[o.mo]+" "+o.yBE;}
+function fmtBEshort(o){return o.d+" "+THMON_SHORT[o.mo]+" "+o.yBE;}
+function weekdayTH(o){return THDAYS[beToGreg(o).getDay()];}
+function beFromInput(id){const v=document.getElementById(id).value;const m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return null;return{d:+m[3],mo:+m[2],yBE:(+m[1])+543};}
+function setInputFromBE(id,o){document.getElementById(id).value=(o.yBE-543)+"-"+String(o.mo).padStart(2,"0")+"-"+String(o.d).padStart(2,"0");}
+function openPicker(id){const el=document.getElementById(id);if(el.showPicker){try{el.showPicker();return;}catch(e){}}el.focus();el.click();}
+function onDatePick(id,btnId){const o=beFromInput(id);const btn=document.getElementById(btnId);if(o){btn.textContent=fmtBEfull(o);btn.classList.add("set");}else{btn.textContent="— เลือกวันจากปฏิทิน —";btn.classList.remove("set");}}
+function refreshDateBtn(id,btnId){onDatePick(id,btnId);}
+function hmToMin(hm){const m=String(hm).trim().match(/^(\d{1,2}):(\d{2})$/);if(!m)return null;return(+m[1])*60+(+m[2]);}
+function minToHM(min){if(min==null||isNaN(min))return"–";min=Math.round(min);const h=Math.floor(min/60),m=min%60;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");}
+// สร้าง time dropdown 24 ชม. (ชั่วโมง 00-23, นาทีทีละ 5) — คุมเองไม่ขึ้นกับ OS
+// val="HH:MM", onchangeExpr = JS ที่จะเรียกเมื่อค่าเปลี่ยน (ใช้ this.value = HH:MM)
+function timeSelect(val,cbName,extra,cls){
+  const p=String(val||"").match(/^(\d{1,2}):(\d{2})$/);
+  let hh=p?+p[1]:0, mm=p?+p[2]:0;
+  const mmStep=(mm%5===0)?mm:Math.round(mm/5)*5; // snap นาทีให้ลงช่อง 5 นาที
+  let hopt="",mopt="";
+  for(let h=0;h<24;h++)hopt+='<option value="'+h+'"'+(h===hh?" selected":"")+'>'+String(h).padStart(2,"0")+'</option>';
+  for(let m=0;m<60;m+=5)mopt+='<option value="'+m+'"'+(m===mmStep?" selected":"")+'>'+String(m).padStart(2,"0")+'</option>';
+  // ถ้านาทีเดิมไม่ลงช่อง 5 ให้เพิ่ม option พิเศษ
+  if(mm%5!==0)mopt+='<option value="'+mm+'" selected>'+String(mm).padStart(2,"0")+'</option>';
+  const uid="ts_"+Math.random().toString(36).slice(2,8);
+  const cb='window.'+cbName+'(this.closest(".timesel"))';
+  return '<span class="timesel'+(cls?" "+cls:"")+'" data-cb="'+cbName+'"'+(extra||"")+'>'
+    +'<select class="tsh" onchange="'+cb+'" oninput="'+cb+'">'+hopt+'</select>'
+    +'<span class="colon">:</span>'
+    +'<select class="tsm" onchange="'+cb+'" oninput="'+cb+'">'+mopt+'</select></span>';
+}
+function timeSelVal(wrap){const h=wrap.querySelector(".tsh").value,m=wrap.querySelector(".tsm").value;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");}
+function minToDur(min){if(min==null||isNaN(min))return"–";const s=min<0?"-":"";min=Math.abs(Math.round(min));const h=Math.floor(min/60),m=min%60;return s+(h?h+" ชม. ":"")+m+" น.";}
+function nowMinReal(){const d=new Date();return d.getHours()*60+d.getMinutes();}
+function currentClock(){return clockOverrideMin!=null?clockOverrideMin:nowMinReal();}
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function save(){
+  if(document.body.classList.contains("viewonly"))return;
+  try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(e){console.error(e);}
+  if(BACKEND_URL&&isAdmin){
+    fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:JSON.stringify(state)})}).catch(e=>console.error("save backend fail",e));
+  }
+}
+async function loadFromBackend(){
+  if(!BACKEND_URL)return null;
+  try{const r=await fetch(BACKEND_URL);const j=await r.json();if(j.ok&&j.state){return JSON.parse(j.state);}}catch(e){console.error("load backend fail",e);}
+  return null;
+}
+function load(){try{const s=localStorage.getItem(STORE_KEY);return s?JSON.parse(s):null;}catch(e){return null;}}
+
+function refreshOrgCount(){const txt=document.getElementById("orgNames").value.split("\n").map(x=>x.trim()).filter(Boolean);orgNamesArr=txt;document.getElementById("orgCountLbl").textContent=txt.length+" หน่วยงาน";}
+document.addEventListener("input",e=>{if(e.target.id==="orgNames")refreshOrgCount();});
+
+function importOrgs(ev){
+  const file=ev.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      let names=rows.map(r=>r&&r[0]!=null?String(r[0]).trim():"").filter(Boolean);
+      if(names.length&&/หน่วยงาน|ชื่อ|name|ลำดับ|no\.?/i.test(names[0]))names.shift();
+      if(!names.length){toast("ไม่พบชื่อในคอลัมน์แรก");return;}
+      const existing=document.getElementById("orgNames").value.trim();
+      document.getElementById("orgNames").value=(existing?existing+"\n":"")+names.join("\n");
+      refreshOrgCount();toast("นำเข้า "+names.length+" หน่วยงานแล้ว");
+    }catch(err){toast("อ่านไฟล์ไม่สำเร็จ");console.error(err);}
+    ev.target.value="";
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function listDays(){
+  const s=beFromInput("startDate"),e=beFromInput("endDate");
+  if(!s||!e){toast("กรุณาจิ้มเลือกวันเริ่มและวันสิ้นสุดจากปฏิทิน");return;}
+  if(beToGreg(e)<beToGreg(s)){toast("วันสิ้นสุดต้องไม่ก่อนวันเริ่ม");return;}
+  const prev=setupDays.slice(); // เก็บค่าที่ผู้ใช้ตั้งไว้เดิม
+  setupDays=[];let cur=beToGreg(s);const endG=beToGreg(e);
+  while(cur<=endG){const be=gregToBE(cur);const dow=cur.getDay();
+    // ถ้าเคยมีวันนี้ตั้งค่าไว้แล้ว ให้คงค่าเดิม (เวลาเริ่ม/เลิก/พัก/เลือก)
+    const old=prev.find(x=>x.be&&x.be.d===be.d&&x.be.mo===be.mo&&x.be.yBE===be.yBE);
+    if(old){setupDays.push(Object.assign({},old,{be,dow}));}
+    else{setupDays.push({be,dow,on:(dow!==0&&dow!==6),start:"10:00",end:"20:00",lunchS:"12:00",lunchE:"13:00",dinnerS:"17:00",dinnerE:"18:00",target:0});}
+    cur.setDate(cur.getDate()+1);}
+  document.getElementById("dayPickPanel").style.display="block";
+  initBulkTimes();
+  renderDayList();
+  document.getElementById("dayPickPanel").scrollIntoView({behavior:"smooth"});
+}
+function renderDayList(){
+  const box=document.getElementById("dayList");box.innerHTML="";
+  setupDays.forEach((d,i)=>{
+    const row=document.createElement("div");
+    row.className="dayrow"+(d.on?"":" off")+((d.dow===0||d.dow===6)?" weekend":"");
+    row.innerHTML='<input type="checkbox" class="chk" style="width:20px;height:20px;accent-color:var(--accent)" '+(d.on?"checked":"")+' onchange="toggleDay('+i+',this.checked)">'
+      +'<div class="dname">วัน'+weekdayTH(d.be)+'<br><span style="font-weight:400;font-size:13px;color:var(--ink-soft)">'+fmtBEfull(d.be)+'</span></div>'
+      +'<div class="times">'
+      +'<div class="mini-f"><label>เริ่มประชุม</label>'+timeSelect(d.start,"onDayTime",' data-i="'+i+'" data-f="start"',"mini")+'</div>'
+      +'<div class="mini-f"><label>เลิกประชุม</label>'+timeSelect(d.end,"onDayTime",' data-i="'+i+'" data-f="end"',"mini")+'</div>'
+      +'<div class="mini-f"><label>พักเที่ยง</label><div style="display:flex;gap:3px;align-items:center">'+timeSelect(d.lunchS,"onDayTime",' data-i="'+i+'" data-f="lunchS"',"mini")+'<span style="font-size:11px">–</span>'+timeSelect(d.lunchE,"onDayTime",' data-i="'+i+'" data-f="lunchE"',"mini")+'</div></div>'
+      +'<div class="mini-f"><label>พักเย็น</label><div style="display:flex;gap:3px;align-items:center">'+timeSelect(d.dinnerS,"onDayTime",' data-i="'+i+'" data-f="dinnerS"',"mini")+'<span style="font-size:11px">–</span>'+timeSelect(d.dinnerE,"onDayTime",' data-i="'+i+'" data-f="dinnerE"',"mini")+'</div></div>'
+      +'</div>';
+    box.appendChild(row);
+  });
+}
+function toggleDay(i,v){setupDays[i].on=v;renderDayList();}
+function setDay(i,f,v){setupDays[i][f]=v.trim();}
+function setDayNum(i,f,v){setupDays[i][f]=Math.max(0,parseInt(v)||0);}
+window.onDayTime=function(wrap){const i=+wrap.getAttribute("data-i"),f=wrap.getAttribute("data-f");setupDays[i][f]=timeSelVal(wrap);};
+function pickAll(v){setupDays.forEach(d=>d.on=v);renderDayList();}
+function pickWeekdays(){setupDays.forEach(d=>d.on=(d.dow!==0&&d.dow!==6));renderDayList();}
+function bulkVal(id){const w=document.getElementById(id).querySelector(".timesel");return w?timeSelVal(w):"";}
+function initBulkTimes(){
+  document.getElementById("wBulkStart").innerHTML=timeSelect("10:00","noop");
+  document.getElementById("wBulkEnd").innerHTML=timeSelect("20:00","noop");
+  document.getElementById("wBulkLunchS").innerHTML=timeSelect("12:00","noop");
+  document.getElementById("wBulkLunchE").innerHTML=timeSelect("13:00","noop");
+  document.getElementById("wBulkDinnerS").innerHTML=timeSelect("17:00","noop");
+  document.getElementById("wBulkDinnerE").innerHTML=timeSelect("18:00","noop");
+}
+window.noop=function(){};
+function applyBulk(){
+  const bs=bulkVal("wBulkStart"),be_=bulkVal("wBulkEnd");
+  const lS=bulkVal("wBulkLunchS"),lE=bulkVal("wBulkLunchE");
+  const dS=bulkVal("wBulkDinnerS"),dE=bulkVal("wBulkDinnerE");
+  setupDays.forEach(d=>{if(!d.on)return;if(bs)d.start=bs;if(be_)d.end=be_;if(lS)d.lunchS=lS;if(lE)d.lunchE=lE;if(dS)d.dinnerS=dS;if(dE)d.dinnerE=dE;});
+  renderDayList();toast("ใส่ค่าให้วันที่เลือกแล้ว");
+}
+
+function buildPlan(){
+  refreshOrgCount();
+  // sync ค่าเวลาสดจาก dropdown ในหน้า setup ก่อน (กันกรณี onchange ไม่ยิง)
+  const dayListBox=document.getElementById("dayList");
+  if(dayListBox){
+    dayListBox.querySelectorAll(".timesel[data-i][data-f]").forEach(wrap=>{
+      const i=+wrap.getAttribute("data-i"),f=wrap.getAttribute("data-f");
+      if(setupDays[i]&&f)setupDays[i][f]=timeSelVal(wrap);
+    });
+  }
+  const chosen=setupDays.filter(d=>d.on);
+  if(!chosen.length){toast("เลือกวันประชุมอย่างน้อย ๑ วัน");return;}
+  if(!orgNamesArr.length){toast("ใส่รายชื่อหน่วยงานก่อน");return;}
+
+  // กระจายหน่วยงานใหม่ตามเวลาปัจจุบันเสมอ (เวลาเปลี่ยน → จำนวนหน่วยต่อวันเปลี่ยนตาม)
+  // สร้างแผนใหม่ทั้งหมด
+  const days=chosen.map(d=>({be:d.be,start:d.start,end:d.end,lunchS:d.lunchS,lunchE:d.lunchE,dinnerS:d.dinnerS,dinnerE:d.dinnerE,target:d.target||0,lunchSeq:null,dinnerSeq:null,lunchStartAct:null,lunchEndAct:null,dinnerStartAct:null,dinnerEndAct:null,meetingPaused:false,pauseType:null,pauseOrgId:null}));
+  const orgs=orgNamesArr.map((nm,i)=>({id:i+1,name:nm,dayIdx:null,seq:0,budget:null,startAct:null,endAct:null,suspended:false,planStart:null,planEnd:null,baseEnd:null}));
+  const mode=document.querySelector('input[name="distMode"]:checked').value;
+  if(mode==="auto"){
+    const anyTarget=days.some(d=>d.target>0);
+    if(anyTarget){
+      let k=0;
+      days.forEach((d,i)=>{let seq=1;for(let j=0;j<d.target&&k<orgs.length;j++){orgs[k].dayIdx=i;orgs[k].seq=seq++;k++;}});
+    }else{
+      const totalNet=days.reduce((a,d)=>a+netMinutesRaw(d),0)||1;
+      let assigned=0;
+      days.forEach(d=>{d._count=Math.round(orgs.length*netMinutesRaw(d)/totalNet);assigned+=d._count;});
+      days[days.length-1]._count+=(orgs.length-assigned);
+      let k=0;
+      days.forEach((d,i)=>{let seq=1;for(let j=0;j<d._count;j++){if(k<orgs.length){orgs[k].dayIdx=i;orgs[k].seq=seq++;k++;}}});
+      while(k<orgs.length){const last=days.length-1;orgs[k].dayIdx=last;orgs[k].seq=(orgs.filter(o=>o.dayIdx===last).length+1);k++;}
+    }
+  }
+  state={days,orgs};recalcAllBudgets();for(let i=0;i<state.days.length;i++)freezePlanTimes(i);activeDay=0;clockOverrideMin=null;
+  save();showResult();render();
+  const totH=(state.days.reduce((a,dd)=>a+netMinutes(dd),0)/60).toFixed(1);
+  toast("สร้างแผนเรียบร้อย · "+state.days.length+" วัน · รวม "+totH+" ชม.");
+}
+
+/* ---- break-aware calc ---- */
+function breakLen(d,bS,bE){const s=hmToMin(bS),e=hmToMin(bE);if(s==null||e==null||e<=s)return 0;const ws=hmToMin(d.start),we=hmToMin(d.end);return Math.max(0,Math.min(e,we)-Math.max(s,ws));}
+function breakRemainingAfter(d,bS,bE,t){const s=hmToMin(bS),e=hmToMin(bE);if(s==null||e==null||e<=s)return 0;const ws=hmToMin(d.start),we=hmToMin(d.end);return Math.max(0,Math.min(e,we)-Math.max(s,ws,t));}
+function netMinutesRaw(d){const total=Math.max(0,hmToMin(d.end)-hmToMin(d.start));return Math.max(0,total-breakLen(d,d.lunchS,d.lunchE)-breakLen(d,d.dinnerS,d.dinnerE));}
+function netMinutes(d){return netMinutesRaw(d);}
+function dayOrgsSorted(dayIdx){return state.orgs.filter(o=>o.dayIdx===dayIdx).sort((a,b)=>a.seq-b.seq);}
+// รายการคิวรวม (หน่วยงาน + พัก) เรียงตาม seq เดียวกัน
+// คืน array ของ {type:'org', org} หรือ {type:'break', kind:'lunch'|'dinner'}
+function dayQueue(dayIdx){
+  const d=state.days[dayIdx];
+  const items=[];
+  state.orgs.filter(o=>o.dayIdx===dayIdx).forEach(o=>items.push({type:"org",seq:o.seq,org:o}));
+  if(d.lunchSeq!=null)items.push({type:"break",kind:"lunch",seq:d.lunchSeq});
+  if(d.dinnerSeq!=null)items.push({type:"break",kind:"dinner",seq:d.dinnerSeq});
+  items.sort((a,b)=>a.seq-b.seq);
+  return items;
+}
+// เขียน seq กลับหลังจัดลำดับใหม่ (1,2,3,...) ทั้งหน่วยงานและพัก
+function writeQueueSeq(dayIdx,items){
+  const d=state.days[dayIdx];
+  items.forEach((it,i)=>{
+    if(it.type==="org")it.org.seq=i+1;
+    else if(it.kind==="lunch")d.lunchSeq=i+1;
+    else if(it.kind==="dinner")d.dinnerSeq=i+1;
+  });
+}
+// คำนวณ "เวลาเริ่มตามแผน" ของแต่ละ item ในคิว
+// ไล่จากเวลาเริ่มประชุม + งบเวลาสะสม; แถวพักใช้ช่วงเวลาของมันเอง และดันเวลาถัดไป
+function planStartTimes(dayIdx){
+  const d=state.days[dayIdx];
+  const items=dayQueue(dayIdx);
+  const times=[];
+  let cursor=hmToMin(d.start);
+  items.forEach((it)=>{
+    if(it.type==="break"){
+      const bS=it.kind==="lunch"?hmToMin(d.lunchS):hmToMin(d.dinnerS);
+      const bE=it.kind==="lunch"?hmToMin(d.lunchE):hmToMin(d.dinnerE);
+      const start=(bS!=null)?Math.max(cursor,bS):cursor;
+      const end=(bE!=null)?bE:start;
+      times.push({startMin:bS,endMin:bE,isBreak:true});
+      cursor=Math.max(cursor,end);
+    }else{
+      const o=it.org;
+      // ใช้เวลาเริ่มจริงถ้ามี ไม่งั้นใช้ cursor
+      const start=(o.startAct!=null)?hmToMin(o.startAct):cursor;
+      const bud=(o.budget!=null?o.budget:0);
+      times.push({startMin:start,endMin:start+bud,isBreak:false});
+      // ถ้าจบจริงแล้ว cursor ขยับไปเวลาจบจริง ไม่งั้นใช้ start+งบ
+      cursor=(o.endAct!=null)?hmToMin(o.endAct):(start+bud);
+    }
+  });
+  return {items,times};
+}
+// freeze เวลาเริ่ม/จบตามแผน ลง state เฉพาะหน่วยที่ยังไม่มีค่า (ไม่ทับค่าที่ user แก้/freeze แล้ว)
+// เรียกหลังจัดคิว เพื่อให้ค่านิ่ง ไม่ขยับตอนปิดหน่วยงาน
+function freezePlanTimes(dayIdx){
+  const {items,times}=planStartTimes(dayIdx);
+  items.forEach((it,i)=>{
+    if(it.type!=="org")return;
+    const o=it.org;
+    if(o.planStart==null&&times[i].startMin!=null)o.planStart=minToHM(times[i].startMin);
+    if(o.planEnd==null&&times[i].endMin!=null)o.planEnd=minToHM(times[i].endMin);
+    // baseEnd = เวลาจบตามการกระจายเริ่มต้น (ก่อนมีพัก) ใช้เป็นเกณฑ์แบ่งกลุ่มเช้า/บ่าย/ค่ำ
+    if(o.baseEnd==null&&o.planEnd!=null)o.baseEnd=o.planEnd;
+  });
+}
+// คำนวณเวลาตามแผนใหม่ "ทั้งวัน" (บังคับเขียนทับ) — ใช้ตอนแก้เวลาประชุม หรือแทรก/นำพักออก
+// หลักการ: ไล่จากเวลาเริ่มประชุม, แต่ละหน่วยใช้ "ระยะเวลาเดิม" (planEnd-planStart) ถ้ามี ไม่งั้นใช้งบ
+//          ถ้าหน่วยคาบเกี่ยวช่วงพัก → ดันไปเริ่มหลังพัก
+function recomputePlanTimes(dayIdx){
+  const d=state.days[dayIdx];
+  const items=dayQueue(dayIdx).filter(it=>it.type==="org"); // เฉพาะหน่วยงาน (เรียงตาม seq)
+  if(!items.length)return;
+  const dStart=hmToMin(d.start), dEnd=hmToMin(d.end);
+
+  const orgs=items.map(it=>{
+    const o=it.org;
+    // ใช้ baseEnd (เวลาจบตามการกระจายเริ่มต้น) เป็นเกณฑ์แบ่งกลุ่ม
+    // ถ้าไม่มี baseEnd ใช้ planEnd ปัจจุบัน
+    const ref=(o.baseEnd!=null)?hmToMin(o.baseEnd):(o.planEnd!=null?hmToMin(o.planEnd):null);
+    return {o, origEnd:ref};
+  });
+
+  // รวบรวมช่วงพักที่อยู่ในคิว เรียงตามเวลาเริ่ม (มี mid = เส้นแบ่งกึ่งกลาง)
+  const breaks=[];
+  if(d.lunchSeq!=null){const s=hmToMin(d.lunchS),e=hmToMin(d.lunchE);if(s!=null&&e!=null&&e>s)breaks.push({s,e,mid:s+Math.round((e-s)/2)});}
+  if(d.dinnerSeq!=null){const s=hmToMin(d.dinnerS),e=hmToMin(d.dinnerE);if(s!=null&&e!=null&&e>s)breaks.push({s,e,mid:s+Math.round((e-s)/2)});}
+  breaks.sort((a,b)=>a.s-b.s);
+
+  // แบ่งหน่วยงานเป็น "เซกเมนต์" (เช้า/บ่าย/ค่ำ) คั่นด้วยพัก
+  // เกณฑ์: หน่วยที่ "จบตามแผนเดิม <= กึ่งกลางพัก" → อยู่ก่อนพักนั้น; ไม่งั้นไปหลังพัก
+  // แต่ละเซกเมนต์มีกรอบเวลา [segStart, segEnd] = ระหว่างพัก (หรือเริ่ม/เลิกประชุม)
+  const segments=[];
+  let remaining=orgs.slice();
+  let segStart=dStart;
+
+  breaks.forEach(br=>{
+    const before=[], after=[];
+    remaining.forEach(u=>{
+      if(u.origEnd!=null && u.origEnd<=br.mid) before.push(u); else after.push(u);
+    });
+    segments.push({orgs:before, segStart:segStart, segEnd:br.s}); // ช่วงก่อนพัก: [segStart, เริ่มพัก]
+    segStart=br.e; // ช่วงถัดไปเริ่มหลังพัก
+    remaining=after;
+  });
+  segments.push({orgs:remaining, segStart:segStart, segEnd:dEnd}); // ช่วงสุดท้าย: [.., เลิกประชุม]
+
+  // แต่ละเซกเมนต์: เฉลี่ยเวลา "เท่ากันทุกหน่วย" เต็มพอดีทั้งช่วง
+  segments.forEach(seg=>{
+    const n=seg.orgs.length;
+    if(!n)return;
+    const span=Math.max(0, seg.segEnd - seg.segStart);
+    const per=Math.floor(span/n); // เวลาต่อหน่วย (เท่ากัน)
+    let cursor=seg.segStart;
+    seg.orgs.forEach((u,idx)=>{
+      let end=(idx===n-1)?seg.segEnd:(cursor+per); // หน่วยสุดท้ายปิดพอดีที่ segEnd (กันเศษ)
+      u.o.planStart=minToHM(cursor);
+      u.o.planEnd=minToHM(end);
+      u.o.budget=end-cursor; // งบเวลา = ช่วงเวลาตามแผน (ให้ตรงกัน)
+      u.o.planEdited=false; // แทรกพัก = จัดใหม่ทั้งวัน ล้างธงแก้เอง (การกระทำล่าสุดชนะ)
+      cursor=end;
+    });
+  });
+}
+
+// รวมช่วงเวลา (union) ของ list [start,end] เป็นนาที — ช่วงทับกันนับครั้งเดียว
+function unionMinutes(intervals){
+  if(!intervals.length)return 0;
+  const arr=intervals.slice().sort((a,b)=>a[0]-b[0]);
+  let total=0, curS=arr[0][0], curE=arr[0][1];
+  for(let i=1;i<arr.length;i++){
+    if(arr[i][0]<=curE){ curE=Math.max(curE,arr[i][1]); }
+    else { total+=curE-curS; curS=arr[i][0]; curE=arr[i][1]; }
+  }
+  total+=curE-curS;
+  return total;
+}
+// เวลาพักที่ "ผ่านไปแล้ว" นับถึงเวลา t (ช่วงพักที่อยู่ก่อน t)
+function breakElapsedBefore(d,t){
+  let e=0;
+  [[d.lunchS,d.lunchE],[d.dinnerS,d.dinnerE]].forEach(([bS,bE])=>{
+    const s=hmToMin(bS),en=hmToMin(bE);
+    if(s==null||en==null||en<=s)return;
+    const ws=hmToMin(d.start),we=hmToMin(d.end);
+    const lo=Math.max(s,ws),hi=Math.min(en,we,t);
+    e+=Math.max(0,hi-lo);
+  });
+  return e;
+}
+
+function recalcDayBudgets(dayIdx){
+  const d=state.days[dayIdx];
+  const dayOrgs=state.orgs.filter(o=>o.dayIdx===dayIdx);
+  const dStart=hmToMin(d.start),dEnd=hmToMin(d.end);
+  const doneOrgs=dayOrgs.filter(o=>o.endAct!=null);
+  const inProgressOrgs=dayOrgs.filter(o=>o.startAct!=null&&o.endAct==null);
+  const waiting=dayOrgs.filter(o=>o.startAct==null&&o.endAct==null);
+  const hasActivity=doneOrgs.length>0||inProgressOrgs.length>0||!!d.lastActivity;
+
+  const netTotal=netMinutes(d); // เวลาพิจารณาสุทธิของวัน (หักพักตายตัวแล้ว)
+
+  // เวลาที่ "ใช้ไปแล้วจริง" = union ของช่วงเวลาจริงของหน่วยที่จบ (เข้าพร้อมกัน = ก้อนเดียว)
+  //   หักช่วงพักที่คาบเกี่ยวออก (เพราะ netTotal หักพักไว้แล้ว ไม่ให้นับซ้ำ)
+  const intervals=doneOrgs.map(o=>[hmToMin(o.startAct),hmToMin(o.endAct)]).filter(iv=>iv[0]!=null&&iv[1]!=null&&iv[1]>iv[0]);
+  let usedByDone=unionMinutes(intervals);
+  // หักช่วงพักที่อยู่ในช่วง union ออก (ไม่นับพักเป็นเวลาพิจารณา)
+  if(intervals.length){
+    const uS=Math.min.apply(null,intervals.map(iv=>iv[0]));
+    const uE=Math.max.apply(null,intervals.map(iv=>iv[1]));
+    [[d.lunchS,d.lunchE],[d.dinnerS,d.dinnerE]].forEach(([bS,bE])=>{
+      const s=hmToMin(bS),e=hmToMin(bE);
+      if(s==null||e==null||e<=s)return;
+      const lo=Math.max(s,uS),hi=Math.min(e,uE);
+      if(hi>lo)usedByDone-=(hi-lo);
+    });
+  }
+  usedByDone=Math.max(0,usedByDone);
+
+  // เวลาที่หายไปโดยไม่พิจารณา (dead air) — เฉพาะเมื่อไม่มีหน่วยกำลังทำ
+  // วัดจาก "เวลาจบล่าสุด → นาฬิกาปัจจุบัน" หักพักในช่วงนั้น
+  let deadAir=0;
+  if(inProgressOrgs.length===0 && hasActivity){
+    let lastEnd=dStart;
+    if(doneOrgs.length)lastEnd=Math.max.apply(null,doneOrgs.map(o=>hmToMin(o.endAct)));
+    if(d.lastActivity)lastEnd=Math.max(lastEnd,d.lastActivity);
+    const now=Math.max(lastEnd,currentClock());
+    let gap=now-lastEnd;
+    // หักพักที่อยู่ในช่วง gap
+    [[d.lunchS,d.lunchE],[d.dinnerS,d.dinnerE]].forEach(([bS,bE])=>{
+      const s=hmToMin(bS),e=hmToMin(bE);
+      if(s==null||e==null||e<=s)return;
+      const lo=Math.max(s,lastEnd),hi=Math.min(e,now);
+      if(hi>lo)gap-=(hi-lo);
+    });
+    deadAir=Math.max(0,gap);
+  }
+
+  // เวลาเหลือ = สุทธิ − ใช้ไปแล้ว − dead air
+  const usable=Math.max(0, netTotal - usedByDone - deadAir);
+
+  // ตัวหาร = หน่วยที่ยังไม่จบ (รอ + กำลังทำ)
+  const notDone=waiting.length+inProgressOrgs.length;
+  let divisor;
+  if(!hasActivity){ divisor=Math.max(d.target||0, dayOrgs.length); }
+  else { divisor=notDone; }
+  const per=divisor>0?usable/divisor:0;
+  // เขียนงบเฉพาะหน่วยที่ "รอคิว"; หน่วยที่กำลังพิจารณาคงงบเดิม (ไม่แตะจนกดปิด)
+  // ข้อยกเว้น: ถ้ามีหน่วยกำลังพิจารณาแต่ "ยังไม่มีใครจบ" (เพิ่งกดเริ่มหน่วยแรก)
+  //   → ยังไม่เขียนงบทับ คงงบที่วางแผนไว้ (แบ่งช่วง) จนกว่าจะกดปิดหน่วยแรก
+  const noneCompleted = doneOrgs.length===0;
+  if(inProgressOrgs.length>0 && noneCompleted && !d.lastActivity){
+    return; // เพิ่งเริ่มหน่วยแรก ยังไม่มีการปิด → งบนิ่ง
+  }
+  dayOrgs.forEach(o=>{if(o.startAct==null&&o.endAct==null)o.budget=per;});
+}
+function recalcAllBudgets(){for(let i=0;i<state.days.length;i++)recalcDayBudgets(i);}
+// คำนวณทั้งงบเวลาและเวลาตามแผนใหม่สำหรับวันหนึ่ง (ใช้เมื่อคิวเปลี่ยน: เพิ่ม/ลบ/ย้าย/แขวน)
+// เฉพาะหน่วยที่ "ยังไม่เริ่มพิจารณา" — หน่วยที่เริ่มแล้ว/จบแล้ว คงเวลาจริงไว้
+function rebuildDayPlan(dayIdx){
+  if(dayIdx==null)return;
+  recalcDayBudgets(dayIdx);
+  // ล้างเวลาตามแผน + baseEnd ของหน่วยที่ยังไม่เริ่ม เพื่อคำนวณเกณฑ์ใหม่ตามการกระจายล่าสุด
+  state.orgs.filter(o=>o.dayIdx===dayIdx&&o.startAct==null).forEach(o=>{o.planStart=null;o.planEnd=null;o.baseEnd=null;});
+  freezePlanTimes(dayIdx);
+  // ถ้ามีพักในคิว ให้จัดเวลาตามช่วง (เช้า/บ่าย/ค่ำ) ด้วย
+  if(state.days[dayIdx].lunchSeq!=null||state.days[dayIdx].dinnerSeq!=null)recomputePlanTimes(dayIdx);
+}
+
+/* ---- org actions ---- */
+function startOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=minToHM(currentClock());const dd=state.days[o.dayIdx];if(dd)dd.lastActivity=null;recalcDayBudgets(o.dayIdx);save();render();}
+// ประชุมต่ออัตโนมัติเมื่อกดปุ่มจัดการหน่วยงาน (ปิด/แขวน/รีเซ็ต)
+function resumeMeetingIfPaused(dayIdx){const d=state.days[dayIdx];if(d&&d.meetingPaused){d.meetingPaused=false;d.pauseType=null;d.pauseOrgId=null;}}
+function finishOrg(id){const o=state.orgs.find(x=>x.id===id);if(o.startAct==null)o.startAct=minToHM(currentClock());o.endAct=minToHM(currentClock());resumeMeetingIfPaused(o.dayIdx);recalcDayBudgets(o.dayIdx);save();render();toast("บันทึกและคำนวณใหม่แล้ว");}
+function undoOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=null;o.endAct=null;resumeMeetingIfPaused(o.dayIdx);recalcDayBudgets(o.dayIdx);save();render();}
+
+/* ---- queue management ---- */
+function addToDay(id){const o=state.orgs.find(x=>x.id===id);o.dayIdx=activeDay;o.seq=dayQueue(activeDay).length+1;o.suspended=false;o.planStart=null;o.planEnd=null;rebuildDayPlan(activeDay);save();render();}
+
+/* ---- break blocks in queue: มี seq เหมือนหน่วยงาน, แทรกตามเวลา ---- */
+function addBreakToQueue(kind){
+  const d=state.days[activeDay];
+  // ตั้งเวลาพักเป็นค่าเริ่มต้นเสมอเมื่อแอดเข้าคิว (เที่ยง 12:00-13:00, เย็น 17:00-18:00)
+  if(kind==="lunch"){d.lunchS="12:00";d.lunchE="13:00";}
+  else{d.dinnerS="17:00";d.dinnerE="18:00";}
+  const bS=kind==="lunch"?hmToMin(d.lunchS):hmToMin(d.dinnerS);
+  const bE=kind==="lunch"?hmToMin(d.lunchE):hmToMin(d.dinnerE);
+  const mid=bS+Math.round((bE-bS)/2); // เส้นแบ่งกึ่งกลางพัก
+  // แทรกก่อนหน่วยงานแรกที่ "จบตามแผนฐาน (baseEnd) > กึ่งกลางพัก" (หน่วยที่จะไปกลุ่มหลังพัก)
+  // ใช้เกณฑ์เดียวกับ recomputePlanTimes เพื่อให้ตำแหน่งพักตรงกับการแบ่งกลุ่ม
+  const items=dayQueue(activeDay);
+  let insertPos=items.length;
+  for(let i=0;i<items.length;i++){
+    const it=items[i];
+    if(it.type==="org"){
+      const ref=(it.org.baseEnd!=null)?hmToMin(it.org.baseEnd):(it.org.planEnd!=null?hmToMin(it.org.planEnd):null);
+      if(ref!=null && ref>mid){insertPos=i;break;}
+    }else{
+      // ถ้าเจอพักอีกก้อน ให้ดูเวลาเริ่มพักนั้นเทียบ
+      const oS=(it.kind==="lunch")?hmToMin(d.lunchS):hmToMin(d.dinnerS);
+      if(oS!=null && oS>=bS){insertPos=i;break;}
+    }
+  }
+  const newItems=items.slice();
+  newItems.splice(insertPos,0,{type:"break",kind:kind});
+  writeQueueSeq(activeDay,newItems);
+  recalcDayBudgets(activeDay);
+  recomputePlanTimes(activeDay); // จัดเวลาตามแผนตามช่วง (เช้า/บ่าย/ค่ำ)
+  save();render();
+}
+function removeBreakFromQueue(kind){const d=state.days[activeDay];if(kind==="lunch")d.lunchSeq=null;else d.dinnerSeq=null;
+  writeQueueSeq(activeDay,dayQueue(activeDay));
+  recalcDayBudgets(activeDay);
+  recomputePlanTimes(activeDay); // คำนวณเวลาตามแผนใหม่ (เอาพักออกแล้วเลื่อนกลับ)
+  save();render();}
+function setBreakTime(wrap){const d=state.days[activeDay];const kind=wrap.getAttribute("data-kind");const which=wrap.getAttribute("data-which");const v=timeSelVal(wrap);
+  if(kind==="lunch"){if(which==="s")d.lunchS=v;else d.lunchE=v;}else{if(which==="s")d.dinnerS=v;else d.dinnerE=v;}
+  recalcDayBudgets(activeDay);save();render();}
+// เวลาเริ่ม/จบตามแผน — แค่บันทึกเพื่อแสดงผล ไม่กระทบการคำนวณ (ยึดเริ่มจริง/จบจริง)
+window.onPlanTime=function(wrap){const id=+wrap.getAttribute("data-id");const which=wrap.getAttribute("data-which");const o=state.orgs.find(x=>x.id===id);if(!o)return;const v=timeSelVal(wrap);
+  const oldVal=(which==="start")?o.planStart:o.planEnd;
+  if(oldVal===v)return; // ค่าไม่เปลี่ยน ไม่ต้องทำซ้ำ (กัน double event)
+  if(which==="start")o.planStart=v;else o.planEnd=v;
+  // ผู้ใช้แก้เวลาตามแผนเอง → งบเวลา = ช่วงเวลาตามแผน (จบ-เริ่ม) และตั้งธงว่าแก้เอง (priority สูงสุด ไม่ถูกเฉลี่ยทับ)
+  o.planEdited=true;
+  if(o.planStart!=null&&o.planEnd!=null){const dur=hmToMin(o.planEnd)-hmToMin(o.planStart);o.budget=Math.max(0,dur);}
+  save();render();};
+// ปุ่มเริ่มพัก/เลิกพัก — จดเวลาจริงเฉยๆ (การคำนวณเวลาที่เหลือใช้นาฬิกาจริงอยู่แล้ว)
+function startBreak(kind){const d=state.days[activeDay];const t=minToHM(currentClock());if(kind==="lunch")d.lunchStartAct=t;else d.dinnerStartAct=t;save();render();}
+function endBreak(kind){const d=state.days[activeDay];const t=minToHM(currentClock());if(kind==="lunch"){if(d.lunchStartAct==null)d.lunchStartAct=t;d.lunchEndAct=t;}else{if(d.dinnerStartAct==null)d.dinnerStartAct=t;d.dinnerEndAct=t;}save();render();}
+function undoBreak(kind){const d=state.days[activeDay];if(kind==="lunch"){d.lunchStartAct=null;d.lunchEndAct=null;}else{d.dinnerStartAct=null;d.dinnerEndAct=null;}save();render();}
+// พักการประชุม (toggle) — ไม่ใช่พักเที่ยง/เย็น
+// ลักษณะ 1: มีหน่วยกำลังพิจารณาตอนกดพัก → เวลายังนับให้หน่วยนั้น (แค่แสดงป้าย)
+// ลักษณะ 2: ไม่มีใครพิจารณา → dead air ปกติ (เวลาถูกหักตามนาฬิกา)
+function toggleMeetingPause(){
+  const d=state.days[activeDay];
+  if(!d.meetingPaused){
+    // เริ่มพัก
+    const inProg=state.orgs.find(o=>o.dayIdx===activeDay&&o.startAct!=null&&o.endAct==null);
+    d.meetingPaused=true;
+    d.pauseType=inProg?1:2;
+    d.pauseOrgId=inProg?inProg.id:null;
+    // ลักษณะ 2: บันทึกเวลาเริ่มพักเป็น lastActivity เพื่อให้ dead air เริ่มนับจากตรงนี้
+    if(d.pauseType===2){ d.lastActivity=Math.max(d.lastActivity||0,currentClock()); }
+    toast("พักการประชุม"+(d.pauseType===1?" (ระหว่างพิจารณา)":""));
+  }else{
+    // ประชุมต่อ
+    d.meetingPaused=false;
+    d.pauseType=null;d.pauseOrgId=null;
+    toast("ประชุมต่อ");
+  }
+  recalcDayBudgets(activeDay);save();render();
+}
+// แก้เวลาพักจริงด้วยมือ
+window.onBreakActTime=function(wrap){const d=state.days[activeDay];const kind=wrap.getAttribute("data-kind");const which=wrap.getAttribute("data-which");const v=timeSelVal(wrap);
+  if(kind==="lunch"){if(which==="s")d.lunchStartAct=v;else d.lunchEndAct=v;}else{if(which==="s")d.dinnerStartAct=v;else d.dinnerEndAct=v;}save();render();};
+
+/* ---- fullscreen ขยายคิว ---- */
+let qFullscreen=false;
+function toggleFullscreen(){
+  qFullscreen=!qFullscreen;
+  const sec=document.getElementById("queueSection");
+  sec.classList.toggle("fullscreen",qFullscreen);
+  document.body.classList.toggle("qfs-open",qFullscreen);
+  document.getElementById("expandIcon").textContent=qFullscreen?"⤡":"⤢";
+  document.getElementById("expandLabel").textContent=qFullscreen?"ย่อกลับ":"ขยายคิวเต็มจอ";
+}
+function suspendOrg(id){const o=state.orgs.find(x=>x.id===id);const day=o.dayIdx;
+  // บันทึกเวลาที่แขวน (นาฬิกาจริง) เป็นจุดอ้างอิงเวลาของวัน เพื่อให้เวลาที่ผ่านไปถูกหัก
+  const suspendAt=currentClock();
+  const dd=state.days[day];
+  dd.lastActivity=Math.max(dd.lastActivity||0, suspendAt);
+  o.dayIdx=null;o.seq=0;o.startAct=null;o.endAct=null;o.suspended=true;o.planStart=null;o.planEnd=null;resumeMeetingIfPaused(day);renumber(day);rebuildDayPlan(day);save();render();toast("แขวนหน่วยงานไว้ในคลังแล้ว · คำนวณเวลาที่เหลือใหม่");}
+function removeFromDay(id){const o=state.orgs.find(x=>x.id===id);const day=o.dayIdx;o.dayIdx=null;o.seq=0;o.startAct=null;o.endAct=null;o.suspended=false;o.planStart=null;o.planEnd=null;renumber(day);rebuildDayPlan(day);save();render();toast("นำออกจากคิว คืนสู่คลังแล้ว");}
+function renumber(dayIdx){writeQueueSeq(dayIdx,dayQueue(dayIdx));}
+function moveOrg(id,dir){
+  const o=state.orgs.find(x=>x.id===id);
+  const items=dayQueue(o.dayIdx); // คิวรวม (หน่วยงาน+พัก) เรียงตาม seq แล้ว
+  const idx=items.findIndex(it=>it.type==="org"&&it.org.id===id);
+  const j=idx+dir;
+  if(j<0||j>=items.length)return;
+  // สลับตำแหน่งใน array แล้วเขียน seq ใหม่ — เลื่อนข้ามพักได้
+  const tmp=items[idx];items[idx]=items[j];items[j]=tmp;
+  writeQueueSeq(o.dayIdx,items);
+  recalcDayBudgets(o.dayIdx);
+  // คำนวณเวลาตามแผนใหม่ตามลำดับใหม่ (เฉพาะหน่วยที่ยังไม่เริ่ม)
+  state.orgs.filter(x=>x.dayIdx===o.dayIdx&&x.startAct==null).forEach(x=>{x.planStart=null;x.planEnd=null;});
+  freezePlanTimes(o.dayIdx);
+  save();render();
+}
+
+/* ---- day cfg ---- */
+function loadDayCfg(){const d=state.days[activeDay];document.getElementById("cfgDayLabel").textContent="วัน"+weekdayTH(d.be)+" "+fmtBEfull(d.be);
+  document.getElementById("wCfgStart").innerHTML=timeSelect(d.start,"onCfgTime",' data-f="start"');
+  document.getElementById("wCfgEnd").innerHTML=timeSelect(d.end,"onCfgTime",' data-f="end"');
+  document.getElementById("wCfgLunchS").innerHTML=timeSelect(d.lunchS,"onCfgTime",' data-f="lunchS"');
+  document.getElementById("wCfgLunchE").innerHTML=timeSelect(d.lunchE,"onCfgTime",' data-f="lunchE"');
+  document.getElementById("wCfgDinnerS").innerHTML=timeSelect(d.dinnerS,"onCfgTime",' data-f="dinnerS"');
+  document.getElementById("wCfgDinnerE").innerHTML=timeSelect(d.dinnerE,"onCfgTime",' data-f="dinnerE"');
+  document.getElementById("cfgTarget").value=d.target||0;}
+window.onCfgTime=function(wrap){const f=wrap.getAttribute("data-f");state.days[activeDay][f]=timeSelVal(wrap);
+  if(f==="start"||f==="end"){
+    // แก้เวลาเริ่ม/เลิกประชุม → คำนวณเวลาตามแผนใหม่ทั้งวัน (เริ่มจากเวลาประชุมใหม่)
+    state.orgs.filter(o=>o.dayIdx===activeDay).forEach(o=>{o.planStart=null;o.planEnd=null;});
+    recalcDayBudgets(activeDay);freezePlanTimes(activeDay);
+  }else{
+    // แก้เวลาพัก → ดันเวลาตามแผนใหม่ (เผื่อพักอยู่ในคิว)
+    recalcDayBudgets(activeDay);recomputePlanTimes(activeDay);
+  }
+  save();render();};
+function updateDayCfg(){const d=state.days[activeDay];d.target=Math.max(0,parseInt(document.getElementById("cfgTarget").value)||0);recalcDayBudgets(activeDay);save();render();}
+
+function setClock(){const w=document.getElementById("wClockOverride").querySelector(".timesel");if(!w){toast("เลือกเวลา");return;}const v=hmToMin(timeSelVal(w));if(v==null){toast("เลือกเวลา");return;}clockOverrideMin=v;render();}
+function useRealClock(){clockOverrideMin=null;const w=document.getElementById("wClockOverride");if(w)w.innerHTML=timeSelect(minToHM(nowMinReal()),"noop");render();}
+
+function showResult(){document.getElementById("setupWrap").style.display="none";document.getElementById("resultWrap").style.display="block";const w=document.getElementById("wClockOverride");if(w&&!w.querySelector(".timesel"))w.innerHTML=timeSelect(minToHM(nowMinReal()),"noop");}
+function backToSetup(){
+  document.getElementById("resultWrap").style.display="none";
+  document.getElementById("setupWrap").style.display="block";
+  if(state){
+    document.getElementById("orgNames").value=state.orgs.map(o=>o.name).join("\n");refreshOrgCount();
+    setInputFromBE("startDate",state.days[0].be);refreshDateBtn("startDate","startBtn");
+    const last=state.days[state.days.length-1].be;
+    setInputFromBE("endDate",last);refreshDateBtn("endDate","endBtn");
+    listDays();
+    state.days.forEach(sd=>{
+      const idx=setupDays.findIndex(x=>x.be.d===sd.be.d&&x.be.mo===sd.be.mo&&x.be.yBE===sd.be.yBE);
+      if(idx>=0){setupDays[idx].on=true;setupDays[idx].start=sd.start;setupDays[idx].end=sd.end;setupDays[idx].lunchS=sd.lunchS;setupDays[idx].lunchE=sd.lunchE;setupDays[idx].dinnerS=sd.dinnerS;setupDays[idx].dinnerE=sd.dinnerE;setupDays[idx].target=sd.target||0;}
+    });
+    setupDays.forEach(x=>{if(!state.days.some(sd=>sd.be.d===x.be.d&&sd.be.mo===x.be.mo&&sd.be.yBE===x.be.yBE))x.on=false;});
+    renderDayList();
+  }
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function render(){
+  if(!state)return;
+  const totalNet=state.days.reduce((a,d)=>a+netMinutes(d),0);
+  const assignedCount=state.orgs.filter(o=>o.dayIdx!=null).length;
+  document.getElementById("stDays").textContent=state.days.length;
+  document.getElementById("stHours").textContent=(totalNet/60).toFixed(1);
+  document.getElementById("stOrgs").textContent=assignedCount+" / "+state.orgs.length;
+  document.getElementById("stAvg").textContent=assignedCount?minToDur(totalNet/assignedCount):"–";
+  document.getElementById("liveNow").textContent=minToHM(currentClock())+(clockOverrideMin!=null?" (ตั้งเอง)":"");
+  // อัปเดตปุ่มพักการประชุม (toggle) ตามสถานะของวันที่เปิดอยู่
+  const pauseBtn=document.getElementById("pauseMeetingBtn");
+  if(pauseBtn){
+    const dd=state.days[activeDay];
+    if(dd&&dd.meetingPaused){pauseBtn.innerHTML="▶ ประชุมต่อ";pauseBtn.classList.add("resuming");}
+    else{pauseBtn.innerHTML="⏸ พักการประชุม";pauseBtn.classList.remove("resuming");}
+  }
+
+  const tabs=document.getElementById("dayTabs");tabs.innerHTML="";
+  state.days.forEach((d,i)=>{
+    const cnt=state.orgs.filter(o=>o.dayIdx===i).length;
+    const doneCnt=state.orgs.filter(o=>o.dayIdx===i&&o.endAct!=null).length;
+    const el=document.createElement("div");
+    el.className="daytab"+(i===activeDay?" active":"");
+    el.innerHTML="วัน"+weekdayTH(d.be)+" "+fmtBEshort(d.be)+'<br><span class="d2">'+doneCnt+"/"+cnt+" หน่วยงาน</span>";
+    el.onclick=()=>{activeDay=i;render();};
+    tabs.appendChild(el);
+  });
+
+  loadDayCfg();
+  const d=state.days[activeDay];
+  const cntToday=state.orgs.filter(o=>o.dayIdx===activeDay).length;
+  const doneToday=state.orgs.filter(o=>o.dayIdx===activeDay&&o.endAct!=null).length;
+  const divisor=doneToday===0?Math.max(d.target||0,cntToday):(cntToday-doneToday);
+  document.getElementById("dayNet").textContent=minToDur(netMinutes(d));
+  document.getElementById("dayOrgCount").textContent=(d.target>0?("เป้า "+d.target+(cntToday!==d.target?(" · จัดแล้ว "+cntToday):"")):cntToday);
+  document.getElementById("dayPer").textContent=divisor>0?minToDur(netMinutes(d)/Math.max(d.target||0,cntToday||1)):"–";
+  // งบหน่วยถัดไป "ตามนาฬิกาจริง" — โชว์เฉพาะวันที่กำลังทำ (active) และยังมีหน่วยที่ยังไม่เสร็จ
+  const pendingToday=state.orgs.filter(o=>o.dayIdx===activeDay&&o.endAct==null);
+  const doneOrgsToday=state.orgs.filter(o=>o.dayIdx===activeDay&&o.endAct!=null);
+  const nextLine=document.getElementById("nextBudLine");
+  const inProgToday=state.orgs.some(o=>o.dayIdx===activeDay&&o.startAct!=null&&o.endAct==null);
+  if(pendingToday.length>0 && (doneOrgsToday.length>0 || clockOverrideMin!=null)){
+    const dEnd=hmToMin(d.end);
+    let ref=hmToMin(d.start);
+    if(doneOrgsToday.length)ref=Math.max.apply(null,doneOrgsToday.map(o=>hmToMin(o.endAct)));
+    // ถ้ากำลังพิจารณาอยู่ ไม่อิงนาฬิกา (งบนิ่ง); dead air อิงนาฬิกา
+    if(!inProgToday){ ref=Math.max(ref,currentClock()); }
+    const remBreak=breakRemainingAfter(d,d.lunchS,d.lunchE,ref)+breakRemainingAfter(d,d.dinnerS,d.dinnerE,ref);
+    const remain=Math.max(0,dEnd-ref-remBreak);
+    const perNext=pendingToday.length?remain/pendingToday.length:0;
+    nextLine.style.display="inline-block";
+    const tag=inProgToday?"หลังปิดหน่วยปัจจุบัน":"ตอนนี้ ("+minToHM(ref)+")";
+    nextLine.innerHTML=tag+' เหลือ '+minToDur(remain)+' ÷ '+pendingToday.length+' หน่วยที่รอ = <b>'+minToDur(perNext)+'/หน่วย</b>';
+  }else{
+    nextLine.style.display="none";
+  }
+
+  // pool
+  const pool=state.orgs.filter(o=>o.dayIdx==null);
+  document.getElementById("poolCount").textContent=pool.length;
+  const poolBox=document.getElementById("poolBox");
+  poolBox.style.display=document.body.classList.contains("viewonly")?"none":"block";
+  const chips=document.getElementById("poolChips");chips.innerHTML="";
+  if(pool.length===0){chips.innerHTML='<span class="hint" style="margin:0">— หน่วยงานถูกจัดครบทุกวันแล้ว —</span>';}
+  else{
+    pool.forEach(o=>{const c=document.createElement("span");c.className="chip"+(o.suspended?" susp":"");c.innerHTML=(o.suspended?'<span class="susptag">⏸ แขวน</span>':"")+escapeHtml(o.name)+' <button onclick="addToDay('+o.id+')">＋ วันนี้</button>';chips.appendChild(c);});
+  }
+  // ชิปพัก (เที่ยง/เย็น) — ต่อวัน ใส่ได้อย่างละ 1
+  const brkBox=document.getElementById("breakChips");brkBox.innerHTML="";
+  const lunchUsed=d.lunchSeq!=null, dinnerUsed=d.dinnerSeq!=null;
+  brkBox.innerHTML=
+    '<span class="chip brk'+(lunchUsed?" disabled":"")+'"><span class="brktag">☕ พักเที่ยง</span>'+(lunchUsed?"อยู่ในคิวแล้ว":'<button onclick="addBreakToQueue(\'lunch\')">＋ วันนี้</button>')+'</span>'
+    +'<span class="chip brk'+(dinnerUsed?" disabled":"")+'"><span class="brktag">🌆 พักเย็น</span>'+(dinnerUsed?"อยู่ในคิวแล้ว":'<button onclick="addBreakToQueue(\'dinner\')">＋ วันนี้</button>')+'</span>';
+
+  // org table — วนตามคิวรวม (หน่วยงาน+พัก) เรียงตาม seq
+  const body=document.getElementById("orgBody");
+  // ผูก event ครั้งเดียว (delegated) เผื่อ inline onchange ไม่ยิงในบางเบราว์เซอร์
+  if(!body.dataset.planListener){
+    const handler=(ev)=>{
+      const sel=ev.target;
+      if(sel&&sel.tagName==="SELECT"){
+        const wrap=sel.closest(".timesel[data-cb='onPlanTime']");
+        if(wrap)window.onPlanTime(wrap);
+      }
+    };
+    body.addEventListener("change",handler);
+    body.addEventListener("input",handler);
+    body.dataset.planListener="1";
+  }
+  body.innerHTML="";
+  const {items:queueItems,times:planTimes}=planStartTimes(activeDay);
+  document.getElementById("emptyDay").style.display=queueItems.length?"none":"block";
+  const viewonly=document.body.classList.contains("viewonly");
+
+  // นับตำแหน่งของหน่วยงาน (สำหรับเลขคิว) และจำนวน item รวม (สำหรับปุ่มขึ้น/ลง)
+  let orgSeqNo=0;
+  let pauseBarShown=false;
+  const totalItems=queueItems.length;
+
+  queueItems.forEach((it,pos)=>{
+    const planT=planTimes[pos];
+    if(it.type==="break"){
+      const kind=it.kind;
+      const bS=kind==="lunch"?d.lunchS:d.dinnerS;
+      const bE=kind==="lunch"?d.lunchE:d.dinnerE;
+      const sAct=kind==="lunch"?d.lunchStartAct:d.dinnerStartAct;
+      const eAct=kind==="lunch"?d.lunchEndAct:d.dinnerEndAct;
+      const label=kind==="lunch"?"พักเที่ยง":"พักเย็น";
+      const icon=kind==="lunch"?"☕":"🌆";
+      const tr=document.createElement("tr");
+      tr.className="breakrow";
+      // เริ่ม/จบตามแผน (= เวลาพักที่ตั้งไว้) แก้ได้
+      let planStartCell,planEndCell;
+      if(viewonly){planStartCell=bS||"–";planEndCell=bE||"–";}
+      else{
+        planStartCell=timeSelect(bS||"12:00","setBreakTime",' data-kind="'+kind+'" data-which="s"',"mini");
+        planEndCell=timeSelect(bE||"13:00","setBreakTime",' data-kind="'+kind+'" data-which="e"',"mini");
+      }
+      // เริ่มจริง/จบจริง
+      let startActCell,endActCell;
+      if(viewonly){startActCell=sAct||"–";endActCell=eAct||"–";}
+      else{
+        startActCell=sAct!=null?timeSelect(sAct,"onBreakActTime",' data-kind="'+kind+'" data-which="s"',"mini"):"–";
+        endActCell=eAct!=null?timeSelect(eAct,"onBreakActTime",' data-kind="'+kind+'" data-which="e"',"mini"):"–";
+      }
+      const usedBreak=(sAct!=null&&eAct!=null)?hmToMin(eAct)-hmToMin(sAct):null;
+      const planDur=Math.max(0,hmToMin(bE)-hmToMin(bS));
+      // ปุ่มเริ่มพัก/เลิกพัก
+      let brkAction="";
+      if(!viewonly){
+        if(sAct==null)brkAction='<button class="mini btn-break" onclick="startBreak(\''+kind+'\')">เริ่มพัก</button>';
+        else if(eAct==null)brkAction='<button class="mini btn-break" onclick="endBreak(\''+kind+'\')">เลิกพัก</button> <button class="mini" onclick="undoBreak(\''+kind+'\')">รีเซ็ต</button>';
+        else brkAction='<button class="mini" onclick="undoBreak(\''+kind+'\')">ยกเลิก</button>';
+        brkAction+=' <button class="mini" onclick="removeBreakFromQueue(\''+kind+'\')">นำออก</button>';
+      }
+      tr.innerHTML='<td>–</td>'
+        +'<td colspan="2"><span class="brklabel">'+icon+' '+label+'</span></td>'
+        +'<td class="budcell">'+minToDur(planDur)+'</td>'
+        +'<td class="timecell" style="color:var(--warn)">'+planStartCell+'</td>'
+        +'<td class="timecell" style="color:var(--warn)">'+planEndCell+'</td>'
+        +'<td class="timecell">'+startActCell+'</td>'
+        +'<td class="timecell">'+endActCell+'</td>'
+        +'<td class="timecell">'+(usedBreak!=null?minToDur(usedBreak):"–")+'</td>'
+        +'<td>–</td>'
+        +(viewonly?"":'<td>'+brkAction+'</td>');
+      body.appendChild(tr);
+    }else{
+      const o=it.org;orgSeqNo++;
+      // ลักษณะที่ 2: แทรกแถบ "พักการประชุม" ก่อนหน่วยที่รอตัวแรก (ไม่มีใครกำลังพิจารณา)
+      if(d.meetingPaused && d.pauseType===2 && !pauseBarShown && o.startAct==null){
+        const ptr=document.createElement("tr");
+        ptr.className="pauserow";
+        ptr.innerHTML='<td colspan="'+(viewonly?"9":"10")+'"><div class="pausebar">⏸ พักการประชุม</div></td>';
+        body.appendChild(ptr);
+        pauseBarShown=true;
+      }
+      const tr=document.createElement("tr");
+      const done=o.endAct!=null;
+      const inProgress=(o.startAct!=null&&o.endAct==null);
+      tr.className=(done?"done ":"")+(inProgress?"current":"");
+      let used=null,delta=null;
+      if(o.startAct!=null&&o.endAct!=null)used=hmToMin(o.endAct)-hmToMin(o.startAct);
+      if(used!=null&&o.budget!=null)delta=o.budget-used;
+      let statusPill=done?'<span class="pill done">เสร็จ</span>':inProgress?'<span class="pill cur">กำลังพิจารณา</span>':'<span class="pill q">รอ</span>';
+      // ลักษณะที่ 1: พักการประชุมระหว่างหน่วยนี้กำลังพิจารณา
+      if(inProgress && d.meetingPaused && d.pauseType===1 && d.pauseOrgId===o.id){
+        statusPill+=' <span class="pill-pause">⏸ พักการประชุม</span>';
+      }
+      let deltaCell="–";
+      if(delta!=null){const cls=delta>=0?"plus":"minus";deltaCell='<span class="delta '+cls+'">'+(delta>=0?"+":"−")+minToDur(Math.abs(delta))+'</span>';}
+      let queueCell='<b>'+orgSeqNo+'</b>';
+      if(!viewonly){queueCell+=' <button class="qbtn" onclick="moveOrg('+o.id+',-1)" '+(pos===0?"disabled":"")+'>▲</button><button class="qbtn" onclick="moveOrg('+o.id+',1)" '+(pos===totalItems-1?"disabled":"")+'>▼</button>';}
+      // เริ่ม/จบตามแผน: freeze ค่าครั้งแรกที่เห็น แล้ว lock ไว้ (ไม่ขยับตอนกดเริ่ม/ปิด/แขวน)
+      const autoStart=(planT&&planT.startMin!=null)?minToHM(planT.startMin):null;
+      const autoEnd=(planT&&planT.endMin!=null)?minToHM(planT.endMin):null;
+      // ถ้ายังไม่เคย freeze และหน่วยยังไม่เริ่มพิจารณา ให้ freeze ค่า auto ทันที
+      if(o.planStart==null&&autoStart!=null&&o.startAct==null)o.planStart=autoStart;
+      if(o.planEnd==null&&autoEnd!=null&&o.startAct==null)o.planEnd=autoEnd;
+      const pStart=o.planStart||autoStart;
+      const pEnd=o.planEnd||autoEnd;
+      let planStartCell,planEndCell;
+      if(viewonly){
+        planStartCell=pStart||"–"; planEndCell=pEnd||"–";
+      }else{
+        planStartCell=timeSelect(pStart||"10:00","onPlanTime",' data-id="'+o.id+'" data-which="start"',"mini");
+        planEndCell=timeSelect(pEnd||"10:00","onPlanTime",' data-id="'+o.id+'" data-which="end"',"mini");
+      }
+      // งบเวลา:
+      //  - หน่วยที่ผู้ใช้แก้เวลาตามแผนเอง (planEdited) → งบ = จบ-เริ่ม (ยึดค่าที่แก้ เสมอ)
+      //  - บริบทวางแผน (ยังไม่มีหน่วยไหนเริ่มพิจารณาในวันนี้) → งบ = จบ-เริ่ม (ตามเวลาตามแผน)
+      //  - บริบทพิจารณาจริง (มีหน่วยเริ่มแล้ว) → งบ = o.budget จาก recalc (ตรรกเฉลี่ยเวลาจริง)
+      const dayStarted=state.orgs.some(x=>x.dayIdx===o.dayIdx&&x.startAct!=null);
+      let budShow=o.budget;
+      if((o.planEdited || !dayStarted) && pStart!=null && pEnd!=null){
+        const dur=hmToMin(pEnd)-hmToMin(pStart);
+        if(dur>=0)budShow=dur;
+      }
+      tr.innerHTML='<td>'+queueCell+'</td><td class="orgname">'+escapeHtml(o.name)+'</td><td>'+statusPill+'</td>'
+        +'<td class="budcell">'+minToDur(budShow)+'</td>'
+        +'<td class="timecell" style="color:var(--accent)">'+planStartCell+'</td>'
+        +'<td class="timecell" style="color:var(--accent)">'+planEndCell+'</td>'
+        +'<td class="timecell">'+(o.startAct==null?"–":o.startAct)+'</td>'
+        +'<td class="timecell">'+(o.endAct==null?"–":o.endAct)+'</td>'
+        +'<td class="timecell">'+(used!=null?minToDur(used):"–")+'</td>'
+        +'<td>'+deltaCell+'</td>'
+        +(viewonly?"":'<td>'+actionButtons(o,done)+'</td>');
+      body.appendChild(tr);
+    }
+  });
+}
+function actionButtons(o,done){
+  let s='';
+  if(done){s='<button class="mini" onclick="undoOrg('+o.id+')">ยกเลิก</button>';}
+  else if(o.startAct==null){s='<button class="mini btn-primary" onclick="startOrg('+o.id+')">เริ่ม</button> <button class="mini btn-suspend" onclick="suspendOrg('+o.id+')" title="แขวนไว้พิจารณาใหม่">แขวน</button> <button class="mini" onclick="removeFromDay('+o.id+')" title="นำออกจากคิว คืนสู่คลัง">นำออก</button>';}
+  else {s='<button class="mini btn-primary" onclick="finishOrg('+o.id+')">ปิด/บันทึก</button> <button class="mini btn-suspend" onclick="suspendOrg('+o.id+')" title="แขวนไว้พิจารณาใหม่">แขวน</button> <button class="mini" onclick="undoOrg('+o.id+')">รีเซ็ต</button>';}
+  return s;
+}
+
+function exportExcel(){
+  if(!state){toast("ยังไม่มีข้อมูล");return;}
+  const rows=[["วันที่","คิว","หน่วยงาน","งบเวลา(นาที)","เริ่มจริง","จบจริง","ใช้จริง(นาที)","+/-(นาที)","สถานะ"]];
+  state.days.forEach((d,di)=>{
+    dayOrgsSorted(di).forEach((o,qi)=>{
+      let used=(o.startAct&&o.endAct)?hmToMin(o.endAct)-hmToMin(o.startAct):"";
+      let delta=(used!==""&&o.budget!=null)?Math.round(o.budget-used):"";
+      rows.push(["วัน"+weekdayTH(d.be)+" "+fmtBEfull(d.be),qi+1,o.name,o.budget!=null?Math.round(o.budget):"",o.startAct||"",o.endAct||"",used,delta,o.endAct?"เสร็จ":"รอ"]);
+    });
+  });
+  const pool=state.orgs.filter(o=>o.dayIdx==null);
+  pool.forEach(o=>rows.push(["(ยังไม่จัด)","","",o.name,"","","","",""]));
+  const ws=XLSX.utils.aoa_to_sheet(rows);const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"ตารางพิจารณา");
+  XLSX.writeFile(wb,"ตารางพิจารณางบประมาณ.xlsx");
+}
+function exportPDF(){if(!state){toast("ยังไม่มีข้อมูล");return;}window.print();toast("เลือก 'Save as PDF' ในหน้าต่างพิมพ์");}
+function shareLink(){if(!state){toast("ยังไม่มีข้อมูล");return;}const url=location.origin+location.pathname+"?mode=view#"+encodeURIComponent(JSON.stringify(state));navigator.clipboard.writeText(url).then(()=>toast("คัดลอกลิงก์ดูอย่างเดียวแล้ว")).catch(()=>prompt("คัดลอกลิงก์:",url));}
+
+/* ========== มุมมองติดตามคิว (public queue view) ========== */
+let qvShowTime=false, qvActiveDay=0;
+function renderQueueView(){
+  if(!state)return;
+  // แท็บวัน
+  const tabs=document.getElementById("qvDayTabs");tabs.innerHTML="";
+  state.days.forEach((d,i)=>{
+    const cnt=state.orgs.filter(o=>o.dayIdx===i).length;
+    const doneCnt=state.orgs.filter(o=>o.dayIdx===i&&o.endAct!=null).length;
+    const el=document.createElement("div");
+    el.className="daytab"+(i===qvActiveDay?" active":"");
+    el.innerHTML="วัน"+weekdayTH(d.be)+" "+fmtBEshort(d.be)+'<br><span class="d2">'+doneCnt+"/"+cnt+" หน่วยงาน</span>";
+    el.onclick=()=>{qvActiveDay=i;renderQueueView();};
+    tabs.appendChild(el);
+  });
+  const d=state.days[qvActiveDay];
+  const items=dayQueue(qvActiveDay);
+
+  // หน่วยงานที่กำลังพิจารณา
+  const currentOrg=state.orgs.find(o=>o.dayIdx===qvActiveDay&&o.startAct!=null&&o.endAct==null);
+  const nowBox=document.getElementById("qvNowBox");
+  const paused=d.meetingPaused;
+  if(currentOrg){
+    nowBox.style.display="block";
+    // ลักษณะที่ 1: พักระหว่างหน่วยนี้กำลังพิจารณา
+    if(paused && d.pauseType===1){
+      document.getElementById("qvNowName").innerHTML=escapeHtml(currentOrg.name)+'<div class="qv-pausetag">⏸ พักการประชุม (ระหว่างพิจารณาหน่วยงานนี้)</div>';
+    }else{
+      document.getElementById("qvNowName").textContent=currentOrg.name;
+    }
+  }
+  else if(paused && d.pauseType===2){
+    // ลักษณะที่ 2: พักโดยไม่มีหน่วยกำลังพิจารณา — แสดงกล่องพักแทน
+    nowBox.style.display="block";
+    document.getElementById("qvNowName").innerHTML='<div class="qv-pausetag" style="margin:0;font-size:22px">⏸ พักการประชุม</div>';
+  }
+  else{nowBox.style.display="none";}
+
+  // รายการคิว
+  const list=document.getElementById("qvList");list.innerHTML="";
+  if(items.length===0){list.innerHTML='<div class="qv-empty">ยังไม่มีรายการในวันนี้</div>';}
+  let orgNo=0;
+  items.forEach(it=>{
+    const row=document.createElement("div");
+    if(it.type==="break"){
+      const kind=it.kind;
+      const label=kind==="lunch"?"พักเที่ยง":"พักเย็น";
+      const icon=kind==="lunch"?"☕":"🌆";
+      const sAct=kind==="lunch"?d.lunchStartAct:d.dinnerStartAct;
+      const eAct=kind==="lunch"?d.lunchEndAct:d.dinnerEndAct;
+      const usedBreak=(sAct!=null&&eAct!=null)?hmToMin(eAct)-hmToMin(sAct):null;
+      row.className="qv-item brk";
+      let meta="";
+      if(qvShowTime){
+        if(usedBreak!=null)meta='<div class="qv-meta">พักไปแล้ว '+minToDur(usedBreak)+'</div>';
+        else if(sAct!=null)meta='<div class="qv-meta">เริ่มพัก '+sAct+' (กำลังพัก)</div>';
+      }
+      row.innerHTML='<div class="qv-num">'+icon+'</div><div class="qv-body"><div class="qv-name">'+label+'</div>'+meta+'</div>';
+    }else{
+      const o=it.org;orgNo++;
+      const done=o.endAct!=null;
+      const inProgress=(o.startAct!=null&&o.endAct==null);
+      row.className="qv-item"+(done?" done":"")+(inProgress?" current":"");
+      let status=done?'<span class="qv-status done">เสร็จแล้ว</span>':inProgress?'<span class="qv-status cur">กำลังพิจารณา</span>':'<span class="qv-status q">รอคิว</span>';
+      let meta="";
+      if(qvShowTime){
+        const used=(o.startAct!=null&&o.endAct!=null)?hmToMin(o.endAct)-hmToMin(o.startAct):null;
+        if(used!=null)meta='<div class="qv-meta">ใช้เวลา '+minToDur(used)+'</div>';
+        else if(o.startAct!=null)meta='<div class="qv-meta">เริ่ม '+o.startAct+'</div>';
+      }
+      row.innerHTML='<div class="qv-num">'+orgNo+'</div><div class="qv-body"><div class="qv-name">'+escapeHtml(o.name)+'</div>'+meta+'</div>'+status;
+    }
+    list.appendChild(row);
+  });
+
+  // footer
+  const doneN=state.orgs.filter(o=>o.dayIdx===qvActiveDay&&o.endAct!=null).length;
+  const totalN=state.orgs.filter(o=>o.dayIdx===qvActiveDay).length;
+  document.getElementById("qvFoot").textContent="พิจารณาแล้ว "+doneN+" จาก "+totalN+" หน่วยงาน"+(qvShowTime?"":" · (ไม่แสดงเวลา)");
+}
+
+/* สร้างลิงก์มุมมองติดตามคิว */
+function shareQueueLink(showTime){
+  if(!state){toast("ยังไม่มีข้อมูล");return;}
+  const url=location.origin+location.pathname+"?mode=queue"+(showTime?"&showtime=1":"")+"#"+encodeURIComponent(JSON.stringify(state));
+  navigator.clipboard.writeText(url).then(()=>toast("คัดลอกลิงก์ติดตามคิวแล้ว"+(showTime?" (แสดงเวลา)":""))).catch(()=>prompt("คัดลอกลิงก์:",url));
+}
+function openShareDialog(){if(!state){toast("ยังไม่มีข้อมูล");return;}document.getElementById("shareDialog").style.display="flex";}
+function closeShareDialog(){document.getElementById("shareDialog").style.display="none";}
+function resetAll(){if(!confirm("ล้างข้อมูลทั้งหมด?"))return;localStorage.removeItem(STORE_KEY);location.reload();}
+
+(async function init(){
+  const params=new URLSearchParams(location.search);
+  const mode=params.get("mode");
+  isAdmin=params.get("admin")==="1";
+  if(!mode && !isAdmin) document.body.classList.add("viewonly"); // ผู้ติดตาม = ดูอย่างเดียว
+  if(mode==="view"){document.body.classList.add("viewonly");const hash=location.hash.slice(1);if(hash){try{state=JSON.parse(decodeURIComponent(hash));}catch(e){}}}
+  if(mode==="queue"){
+    // มุมมองติดตามคิว — ดูอย่างเดียว ไม่แสดงหน้าบริหาร
+    document.body.classList.add("viewonly");
+    qvShowTime=(params.get("showtime")==="1");
+    const hash=location.hash.slice(1);
+    if(hash){try{state=JSON.parse(decodeURIComponent(hash));}catch(e){}}
+    document.getElementById("setupWrap").style.display="none";
+    document.getElementById("resultWrap").style.display="none";
+    document.querySelector("header").style.display="none";
+    if(state){
+      // เริ่มที่วันที่กำลังพิจารณา (ถ้ามี) ไม่งั้นวันแรก
+      const activeIdx=state.days.findIndex((d,i)=>state.orgs.some(o=>o.dayIdx===i&&o.startAct!=null&&o.endAct==null));
+      qvActiveDay=activeIdx>=0?activeIdx:0;
+      document.getElementById("queueViewWrap").style.display="block";
+      renderQueueView();
+      // รีเฟรชอัตโนมัติทุก 20 วินาที (เผื่อ state อัปเดต — แต่ snapshot ในลิงก์คงที่)
+      setInterval(()=>{renderQueueView();},20000);
+    }else{
+      document.getElementById("queueViewWrap").style.display="block";
+      document.getElementById("qvList").innerHTML='<div class="qv-empty">ไม่พบข้อมูล</div>';
+    }
+    return; // ไม่ต้องรัน logic หน้าบริหาร
+  }
+  // ดึงจาก backend ก่อน (sync ข้ามเครื่อง) ถ้าไม่มีค่อย fallback localStorage
+  if(!state){
+    const remote=await loadFromBackend();
+    state = remote || load();
+  }
+  if(state){
+    // migration: ล้าง lastActivity ที่ค้างในวันที่มีหน่วยกำลังพิจารณา (ข้อมูลเก่าไม่สอดคล้อง)
+    state.days.forEach((d,i)=>{
+      const hasInProgress=state.orgs.some(o=>o.dayIdx===i&&o.startAct!=null&&o.endAct==null);
+      if(hasInProgress&&d.lastActivity)d.lastActivity=null;
+    });
+    recalcAllBudgets();
+    showResult();render();
+  }
+  // ผู้ติดตาม (ไม่ใช่แอดมิน) poll backend ทุก 3 วิ
+  if(BACKEND_URL && !isAdmin){
+    setInterval(async ()=>{
+      const remote=await loadFromBackend();
+      if(remote){ state=remote; recalcAllBudgets(); showResult(); render(); }
+    },3000);
+  }
+  setInterval(()=>{
+    if(!state)return;
+    if(clockOverrideMin==null){
+      document.getElementById("liveNow").textContent=minToHM(currentClock());
+      // คำนวณงบใหม่ตามนาฬิกาจริง เพื่อหัก dead air ระหว่างที่ยังไม่กดปุ่ม
+      // เฉพาะเมื่อมีวันที่เริ่มพิจารณาแล้วและยังมีหน่วยที่รออยู่
+      let need=false;
+      state.days.forEach((d,i)=>{
+        const dayOrgs=state.orgs.filter(o=>o.dayIdx===i);
+        const done=dayOrgs.some(o=>o.endAct!=null);
+        const pending=dayOrgs.some(o=>o.endAct==null);
+        if(done&&pending)need=true;
+      });
+      if(need){recalcAllBudgets();render();}
+    }
+  },30000);
+})();
+</script>
+</body>
+</html>
