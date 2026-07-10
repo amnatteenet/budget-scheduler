@@ -185,8 +185,8 @@ body.qfs-open{overflow:hidden}
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span class="viewbadge">โหมดดูอย่างเดียว · แก้ไขไม่ได้</span>
-    <button class="edit-only" onclick="exportExcel()">Export Excel</button>
-    <button class="edit-only" onclick="exportPDF()">Export PDF</button>
+    <button class="edit-only" onclick="exportWord()">Export MS Word</button>
+    <button class="edit-only" onclick="exportAgendaPDF()">Export PDF</button>
     <button class="edit-only" onclick="openShareDialog()">คัดลอกลิงก์แชร์</button>
     <button class="edit-only" onclick="backToSetup()">แก้ไขการตั้งค่า</button>
   </div>
@@ -1186,6 +1186,45 @@ function actionButtons(o,done){
   return s;
 }
 
+function buildAgendaDoc(){
+  const th=s=>String(s).replace(/[0-9]/g,d=>"๐๑๒๓๔๕๖๗๘๙"[+d]);
+  const tt=hm=>th(String(hm||"").replace(":","."));
+  const YEAR=th(2570);
+  let rows="";
+  state.days.forEach((d,idx)=>{
+    const dateLine="วัน"+weekdayTH(d.be)+"ที่ "+th(d.be.d)+" "+THMON_FULL[d.be.mo]+" "+th(d.be.yBE);
+    let left="<p style='font-weight:bold;margin:0'>"+escapeHtml(dateLine)+"</p>";
+    left+="<p style='margin:0'>ประชุมระหว่าง เวลา "+tt(d.start)+" - "+tt(d.end)+" นาฬิกา</p>";
+    if(d.lunchS&&d.lunchE) left+="<p style='margin:6px 0 0'>พักรับประทานอาหารกลางวัน<br>เวลา "+tt(d.lunchS)+" - "+tt(d.lunchE)+" นาฬิกา</p>";
+    if(d.dinnerS&&d.dinnerE) left+="<p style='margin:6px 0 0'>พักรับประทานอาหารเย็น<br>เวลา "+tt(d.dinnerS)+" - "+tt(d.dinnerE)+" นาฬิกา</p>";
+    const orgs=state.orgs.filter(o=>o.dayIdx===idx).sort((a,b)=>a.seq-b.seq);
+    let right=orgs.length? orgs.map((o,i)=>"<p style='margin:0'>"+th(i+1)+". "+escapeHtml(o.name)+"</p>").join("") : "<p style='margin:0;color:#999'>-</p>";
+    rows+="<tr><td style='border:1px solid #000;padding:6px 10px;vertical-align:top;width:40%'>"+left+"</td><td style='border:1px solid #000;padding:6px 10px;vertical-align:top'>"+right+"</td></tr>";
+  });
+  return "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset='utf-8'><title>กำหนดการประชุม</title>"+
+  "<style>@page{size:A4;margin:2cm}body{font-family:'TH Sarabun New','Sarabun','Angsana New',serif;font-size:16pt;color:#000}table{border-collapse:collapse;width:100%}</style></head><body>"+
+  "<div style='text-align:center;line-height:1.5'>"+
+  "<p style='font-weight:bold;margin:0'>กำหนดการประชุมคณะอนุกรรมาธิการที่ดินและสิ่งก่อสร้าง</p>"+
+  "<p style='margin:0'>ในคณะกรรมาธิการวิสามัญพิจารณางบประมาณรายจ่ายประจำปีงบประมาณ พ.ศ. "+YEAR+"</p>"+
+  "<p style='margin:0 0 10px'>สภาผู้แทนราษฎร</p></div>"+
+  "<table><tr><td style='border:1px solid #000;padding:6px 10px;text-align:center;font-weight:bold'>กำหนดวันเวลา</td><td style='border:1px solid #000;padding:6px 10px;text-align:center;font-weight:bold'>หน่วยงาน</td></tr>"+rows+"</table>"+
+  "<p style='text-align:center;font-weight:bold;margin-top:12px'>*** กำหนดการอาจมีการเปลี่ยนแปลงตามความเหมาะสม ***</p></body></html>";
+}
+function exportWord(){
+  if(!state){toast("ยังไม่มีข้อมูล");return;}
+  const blob=new Blob(["﻿"+buildAgendaDoc()],{type:"application/msword"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="กำหนดการประชุม.doc";document.body.appendChild(a);a.click();a.remove();
+  toast("ดาวน์โหลดไฟล์ Word แล้ว");
+}
+function exportAgendaPDF(){
+  if(!state){toast("ยังไม่มีข้อมูล");return;}
+  const w=window.open("","_blank");
+  if(!w){toast("โปรดอนุญาต popup เพื่อพิมพ์ PDF");return;}
+  w.document.open();w.document.write(buildAgendaDoc());w.document.close();
+  setTimeout(function(){w.focus();w.print();},400);
+  toast("เลือก 'Save as PDF' ในหน้าต่างพิมพ์");
+}
 function exportExcel(){
   if(!state){toast("ยังไม่มีข้อมูล");return;}
   const rows=[["วันที่","คิว","หน่วยงาน","งบเวลา(นาที)","เริ่มจริง","จบจริง","ใช้จริง(นาที)","+/-(นาที)","สถานะ"]];
