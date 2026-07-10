@@ -304,10 +304,10 @@ body.qfs-open{overflow:hidden}
     <button class="expandbtn" id="expandBtn" onclick="toggleFullscreen()"><span id="expandIcon">⤢</span> <span id="expandLabel">ขยายคิวเต็มจอ</span></button>
   </div>
 
-  <div class="pool edit-only" id="poolBox">
-    <h3>คลังหน่วยงานที่ยังไม่จัดวัน (<span id="poolCount">0</span>) — กด "＋ วันนี้" เพื่อเพิ่มเข้าวันที่เปิดอยู่</h3>
+  <div class="pool" id="poolBox">
+    <h3>คลังหน่วยงานที่ยังไม่จัดวัน (<span id="poolCount">0</span>)<span class="edit-only"> — กด "＋ วันนี้" เพื่อเพิ่มเข้าวันที่เปิดอยู่</span></h3>
     <div class="poolchips" id="poolChips"></div>
-    <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
+    <div class="edit-only" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
       <div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:6px">ก้อนเวลาพัก (แต่ละวันใส่ได้อย่างละ 1 ครั้ง)</div>
       <div class="poolchips" id="breakChips"></div>
     </div>
@@ -1016,11 +1016,11 @@ function render(){
   const pool=state.orgs.filter(o=>o.dayIdx==null);
   document.getElementById("poolCount").textContent=pool.length;
   const poolBox=document.getElementById("poolBox");
-  poolBox.style.display=document.body.classList.contains("viewonly")?"none":"block";
+  poolBox.style.display=(document.body.classList.contains("viewonly")&&pool.length===0)?"none":"block";
   const chips=document.getElementById("poolChips");chips.innerHTML="";
   if(pool.length===0){chips.innerHTML='<span class="hint" style="margin:0">— หน่วยงานถูกจัดครบทุกวันแล้ว —</span>';}
   else{
-    pool.forEach(o=>{const c=document.createElement("span");c.className="chip"+(o.suspended?" susp":"");c.innerHTML=(o.suspended?'<span class="susptag">⏸ แขวน</span>':"")+escapeHtml(o.name)+' <button onclick="addToDay('+o.id+')">＋ วันนี้</button>';chips.appendChild(c);});
+    const _vo=document.body.classList.contains("viewonly");pool.forEach(o=>{const c=document.createElement("span");c.className="chip"+(o.suspended?" susp":"");c.innerHTML=(o.suspended?'<span class="susptag">⏸ แขวน</span>':"")+escapeHtml(o.name)+(_vo?"":' <button onclick="addToDay('+o.id+')">＋ วันนี้</button>');chips.appendChild(c);});
   }
   // ชิปพัก (เที่ยง/เย็น) — ต่อวัน ใส่ได้อย่างละ 1
   const brkBox=document.getElementById("breakChips");brkBox.innerHTML="";
@@ -1283,7 +1283,16 @@ function shareQueueLink(showTime){
 }
 function openShareDialog(){if(!state){toast("ยังไม่มีข้อมูล");return;}document.getElementById("shareDialog").style.display="flex";}
 function closeShareDialog(){document.getElementById("shareDialog").style.display="none";}
-function resetAll(){if(!confirm("ล้างข้อมูลทั้งหมด?"))return;localStorage.removeItem(STORE_KEY);location.reload();}
+function resetAll(){
+  const pw=prompt("ใส่รหัสผ่านเพื่อล้างข้อมูลทั้งหมด:");
+  if(pw===null)return;
+  if(pw!=="#S@pa6191"){toast("รหัสผ่านไม่ถูกต้อง");return;}
+  if(!confirm("ยืนยันล้างข้อมูลทั้งหมด? (ลบทั้งเครื่องนี้และข้อมูลที่ sync บน Sheet)"))return;
+  localStorage.removeItem(STORE_KEY);
+  if(BACKEND_URL){
+    fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:""})}).then(()=>location.reload()).catch(()=>location.reload());
+  }else{location.reload();}
+}
 
 (async function init(){
   const params=new URLSearchParams(location.search);
