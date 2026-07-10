@@ -259,6 +259,15 @@ body.qfs-open{overflow:hidden}
       <div class="stat"><div class="n" id="stAvg">–</div><div class="l">เฉลี่ยต่อหน่วยงาน</div></div>
     </div>
   </div>
+  <div class="panel edit-only" id="viewerPanel" style="display:none">
+    <h2>กำลังติดตามขณะนี้ <span style="font-size:13px;color:var(--ink-soft);font-weight:400">· อัปเดตทุก 5 วิ</span></h2>
+    <div class="stats">
+      <div class="stat"><div class="n" id="vcTotal">–</div><div class="l">รวมทั้งหมด</div></div>
+      <div class="stat"><div class="n" id="vcFull">–</div><div class="l">ตารางบริหารเต็ม</div></div>
+      <div class="stat"><div class="n" id="vcQueue">–</div><div class="l">ติดตามคิว</div></div>
+      <div class="stat"><div class="n" id="vcQTime">–</div><div class="l">ติดตามคิว + เวลา</div></div>
+    </div>
+  </div>
   <div class="livebar" style="display:none">
     <span class="livedot"></span><span>เวลาปัจจุบันที่ใช้คำนวณ:</span>
     <span class="now" id="liveNow">–</span>
@@ -1358,6 +1367,22 @@ function confirmReset(){
   }else{location.reload();}
 }
 
+/* ===== ตัวนับผู้ติดตาม (presence) ===== */
+const VIEW_SID=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+"-"+Math.random().toString(36).slice(2));
+function viewType_(){const p=new URLSearchParams(location.search);if(p.get("mode")==="queue")return p.get("showtime")==="1"?"queuetime":"queue";return "full";}
+function renderViewerCounts_(c){const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=(v==null?"–":v);};set("vcTotal",c.total);set("vcFull",c.full);set("vcQueue",c.queue);set("vcQTime",c.queuetime);}
+function heartbeat_(){if(!BACKEND_URL)return;fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"heartbeat",sid:VIEW_SID,type:viewType_()})}).catch(()=>{});}
+function pollCounts_(){if(!BACKEND_URL)return;fetch(BACKEND_URL+"?action=counts&t="+Date.now()).then(r=>r.json()).then(j=>{if(j.ok&&j.counts)renderViewerCounts_(j.counts);}).catch(()=>{});}
+function startPresence_(){
+  if(!BACKEND_URL)return;
+  if(isAdmin){
+    const vp=document.getElementById("viewerPanel");if(vp)vp.style.display="block";
+    pollCounts_();setInterval(pollCounts_,5000);
+  }else{
+    heartbeat_();setInterval(heartbeat_,5000);
+    window.addEventListener("pagehide",function(){try{navigator.sendBeacon(BACKEND_URL,JSON.stringify({action:"leave",sid:VIEW_SID}));}catch(e){}});
+  }
+}
 (async function init(){
   const params=new URLSearchParams(location.search);
   const mode=params.get("mode");
@@ -1393,6 +1418,7 @@ function confirmReset(){
     }
     // เดินตัวจับเวลา/ไฟกระพริบให้ลื่นทุก 1 วิ
     setInterval(()=>{ if(state) renderQueueView(); },1000);
+    startPresence_(); // นับผู้ติดตามคิว
     return; // ไม่ต้องรัน logic หน้าบริหาร
   }
   // ดึงจาก backend ก่อน (sync ข้ามเครื่อง) ถ้าไม่มีค่อย fallback localStorage
@@ -1417,6 +1443,7 @@ function confirmReset(){
       if(remote){ state=remote; recalcAllBudgets(); showResult(); render(); }
     },3000);
   }
+  startPresence_(); // เริ่มนับ/แสดงผู้ติดตาม
   setInterval(()=>{
     if(!state)return;
     if(clockOverrideMin==null){
