@@ -1380,6 +1380,7 @@ function startPresence_(){
     pollCounts_();setInterval(pollCounts_,5000);
   }else{
     heartbeat_();setInterval(heartbeat_,5000);
+    document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")heartbeat_();});
     window.addEventListener("pagehide",function(){try{navigator.sendBeacon(BACKEND_URL,JSON.stringify({action:"leave",sid:VIEW_SID}));}catch(e){}});
   }
 }
