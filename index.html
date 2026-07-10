@@ -356,6 +356,19 @@ body.qfs-open{overflow:hidden}
   <div class="qv-foot" id="qvFoot"></div>
 </div>
 
+<div id="pwDialog" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:22px 24px;max-width:360px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">ล้างข้อมูลทั้งหมด</div>
+    <div style="font-size:13px;color:var(--ink-soft);margin-bottom:12px">ใส่รหัสผ่านเพื่อยืนยัน (ลบทั้งเครื่องนี้และข้อมูลบน Sheet)</div>
+    <input id="pwInput" type="password" placeholder="รหัสผ่าน" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px" onkeydown="if(event.key==='Enter')confirmReset()">
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-soft);cursor:pointer"><input type="checkbox" id="pwShow" onchange="document.getElementById('pwInput').type=this.checked?'text':'password'"> แสดงรหัสผ่าน</label>
+    <div id="pwError" style="display:none;color:var(--behind);font-size:13px;margin-top:8px">รหัสผ่านไม่ถูกต้อง</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button onclick="closePwDialog()">ยกเลิก</button>
+      <button class="btn-danger" onclick="confirmReset()">ล้างข้อมูล</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <div id="shareDialog" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:center;justify-content:center">
@@ -1283,11 +1296,23 @@ function shareQueueLink(showTime){
 }
 function openShareDialog(){if(!state){toast("ยังไม่มีข้อมูล");return;}document.getElementById("shareDialog").style.display="flex";}
 function closeShareDialog(){document.getElementById("shareDialog").style.display="none";}
+function todayDayIdx(){
+  if(!state||!state.days) return -1;
+  const t=gregToBE(new Date());
+  return state.days.findIndex(d=>d.be&&d.be.d===t.d&&d.be.mo===t.mo&&d.be.yBE===t.yBE);
+}
 function resetAll(){
-  const pw=prompt("ใส่รหัสผ่านเพื่อล้างข้อมูลทั้งหมด:");
-  if(pw===null)return;
-  if(pw!=="#S@pa6191"){toast("รหัสผ่านไม่ถูกต้อง");return;}
-  if(!confirm("ยืนยันล้างข้อมูลทั้งหมด? (ลบทั้งเครื่องนี้และข้อมูลที่ sync บน Sheet)"))return;
+  const el=document.getElementById("pwInput"); if(el){el.value="";el.type="password";}
+  const cb=document.getElementById("pwShow"); if(cb)cb.checked=false;
+  const er=document.getElementById("pwError"); if(er)er.style.display="none";
+  document.getElementById("pwDialog").style.display="flex";
+  if(el)setTimeout(()=>el.focus(),50);
+}
+function closePwDialog(){document.getElementById("pwDialog").style.display="none";}
+function confirmReset(){
+  const pw=document.getElementById("pwInput").value;
+  if(pw!=="#S@pa6191"){document.getElementById("pwError").style.display="block";return;}
+  closePwDialog();
   localStorage.removeItem(STORE_KEY);
   if(BACKEND_URL){
     fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:""})}).then(()=>location.reload()).catch(()=>location.reload());
@@ -1311,9 +1336,9 @@ function resetAll(){
     document.querySelector("header").style.display="none";
     document.getElementById("queueViewWrap").style.display="block";
     if(state){
-      // เริ่มที่วันที่กำลังพิจารณา (ถ้ามี) ไม่งั้นวันแรก
-      const activeIdx=state.days.findIndex((d,i)=>state.orgs.some(o=>o.dayIdx===i&&o.startAct!=null&&o.endAct==null));
-      qvActiveDay=activeIdx>=0?activeIdx:0;
+      // เปิดแท็บตรงกับวันที่ปัจจุบัน ถ้าไม่ตรงเลยเปิดแท็บแรก
+      const _ti=todayDayIdx();
+      qvActiveDay=_ti>=0?_ti:0;
       renderQueueView();
     }else{
       document.getElementById("qvList").innerHTML='<div class="qv-empty">ไม่พบข้อมูล</div>';
@@ -1341,6 +1366,7 @@ function resetAll(){
       if(hasInProgress&&d.lastActivity)d.lastActivity=null;
     });
     recalcAllBudgets();
+    const _ti=todayDayIdx(); activeDay=_ti>=0?_ti:0; // เปิดแท็บตรงวันปัจจุบัน ไม่ตรงเปิดแท็บแรก
     showResult();render();
   }
   // ผู้ติดตาม (ไม่ใช่แอดมิน) poll backend ทุก 3 วิ
