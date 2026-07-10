@@ -1335,10 +1335,12 @@ function confirmReset(){
     document.getElementById("resultWrap").style.display="none";
     document.querySelector("header").style.display="none";
     document.getElementById("queueViewWrap").style.display="block";
+    let qvTabInit=false;
+    const qvSetTodayTab=()=>{ const _ti=todayDayIdx(); qvActiveDay=_ti>=0?_ti:0; qvTabInit=true; };
+    // ถ้าไม่มี snapshot ในลิงก์ ลองดึงจาก backend ก่อนเรนเดอร์ครั้งแรก
+    if(!state && BACKEND_URL){ const remote=await loadFromBackend(); if(remote) state=remote; }
     if(state){
-      // เปิดแท็บตรงกับวันที่ปัจจุบัน ถ้าไม่ตรงเลยเปิดแท็บแรก
-      const _ti=todayDayIdx();
-      qvActiveDay=_ti>=0?_ti:0;
+      qvSetTodayTab(); // เปิดแท็บตรงวันปัจจุบัน ไม่ตรงเปิดแท็บแรก
       renderQueueView();
     }else{
       document.getElementById("qvList").innerHTML='<div class="qv-empty">ไม่พบข้อมูล</div>';
@@ -1347,7 +1349,7 @@ function confirmReset(){
     if(BACKEND_URL){
       setInterval(async ()=>{
         const remote=await loadFromBackend();
-        if(remote){ state=remote; renderQueueView(); }
+        if(remote){ state=remote; if(!qvTabInit) qvSetTodayTab(); renderQueueView(); }
       },3000);
     }
     // เดินตัวจับเวลา/ไฟกระพริบให้ลื่นทุก 1 วิ
