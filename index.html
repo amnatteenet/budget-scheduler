@@ -256,16 +256,7 @@ body.qfs-open{overflow:hidden}
       <div class="stat"><div class="n" id="stDays">–</div><div class="l">วันประชุม</div></div>
       <div class="stat"><div class="n" id="stHours">–</div><div class="l">ชั่วโมงพิจารณารวม (หักพัก)</div></div>
       <div class="stat"><div class="n" id="stOrgs">–</div><div class="l">หน่วยงานที่จัดแล้ว / ทั้งหมด</div></div>
-      <div class="stat"><div class="n" id="stAvg">–</div><div class="l">เฉลี่ยต่อหน่วยงาน</div></div>
-    </div>
-  </div>
-  <div class="panel edit-only" id="viewerPanel" style="display:none">
-    <h2>กำลังติดตามขณะนี้ <span style="font-size:13px;color:var(--ink-soft);font-weight:400">· อัปเดตทุก 5 วิ</span></h2>
-    <div class="stats">
-      <div class="stat"><div class="n" id="vcTotal">–</div><div class="l">รวมทั้งหมด</div></div>
-      <div class="stat"><div class="n" id="vcFull">–</div><div class="l">ตารางบริหารเต็ม</div></div>
-      <div class="stat"><div class="n" id="vcQueue">–</div><div class="l">ติดตามคิว</div></div>
-      <div class="stat"><div class="n" id="vcQTime">–</div><div class="l">ติดตามคิว + เวลา</div></div>
+      <div class="stat edit-only" id="viewerStat"><div class="n" id="vcTotal">–</div><div class="l">กำลังติดตามขณะนี้<br><span style="font-size:11px;color:var(--ink-soft)">เต็ม <span id="vcFull">–</span> · คิว <span id="vcQueue">–</span> · คิว+เวลา <span id="vcQTime">–</span></span></div></div>
     </div>
   </div>
   <div class="livebar" style="display:none">
@@ -984,7 +975,6 @@ function render(){
   document.getElementById("stDays").textContent=state.days.length;
   document.getElementById("stHours").textContent=(totalNet/60).toFixed(1);
   document.getElementById("stOrgs").textContent=assignedCount+" / "+state.orgs.length;
-  document.getElementById("stAvg").textContent=assignedCount?minToDur(totalNet/assignedCount):"–";
   document.getElementById("liveNow").textContent=minToHM(currentClock())+(clockOverrideMin!=null?" (ตั้งเอง)":"");
   // อัปเดตปุ่มพักการประชุม (toggle) ตามสถานะของวันที่เปิดอยู่
   const pauseBtn=document.getElementById("pauseMeetingBtn");
@@ -1376,7 +1366,6 @@ function pollCounts_(){if(!BACKEND_URL)return;fetch(BACKEND_URL+"?action=counts&
 function startPresence_(){
   if(!BACKEND_URL)return;
   if(isAdmin){
-    const vp=document.getElementById("viewerPanel");if(vp)vp.style.display="block";
     pollCounts_();setInterval(pollCounts_,5000);
   }else{
     heartbeat_();setInterval(heartbeat_,5000);
@@ -1384,10 +1373,36 @@ function startPresence_(){
     window.addEventListener("pagehide",function(){try{navigator.sendBeacon(BACKEND_URL,JSON.stringify({action:"leave",sid:VIEW_SID}));}catch(e){}});
   }
 }
+function requireAdminAuth(){
+  return new Promise(function(resolve){
+    try{ if(sessionStorage.getItem("bs_admin_ok")==="1") return resolve(true); }catch(e){}
+    const ov=document.createElement("div");
+    ov.style.cssText="position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center";
+    ov.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px 26px;max-width:340px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.3)">'
+      +'<div style="font-size:17px;font-weight:700;margin-bottom:4px">เข้าสู่โหมดแอดมิน</div>'
+      +'<div style="font-size:13px;color:var(--ink-soft);margin-bottom:12px">กรอกรหัสผ่านเพื่อแก้ไขข้อมูล</div>'
+      +'<input id="alPw" type="password" placeholder="รหัสผ่าน" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px">'
+      +'<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-soft);cursor:pointer"><input type="checkbox" id="alShow"> แสดงรหัสผ่าน</label>'
+      +'<div id="alErr" style="display:none;color:var(--behind);font-size:13px;margin-top:8px">รหัสผ่านไม่ถูกต้อง</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
+      +'<button id="alCancel">ดูอย่างเดียว</button>'
+      +'<button id="alOk" class="btn-primary">เข้าสู่ระบบ</button></div></div>';
+    document.body.appendChild(ov);
+    const pw=ov.querySelector("#alPw"), show=ov.querySelector("#alShow"), err=ov.querySelector("#alErr");
+    show.onchange=function(){ pw.type=show.checked?"text":"password"; };
+    function ok(){ if(pw.value==="#S@pa6191"){ try{sessionStorage.setItem("bs_admin_ok","1");}catch(e){} ov.remove(); resolve(true); } else { err.style.display="block"; pw.select(); } }
+    function cancel(){ ov.remove(); resolve(false); }
+    ov.querySelector("#alOk").onclick=ok;
+    ov.querySelector("#alCancel").onclick=cancel;
+    pw.addEventListener("keydown",function(e){ if(e.key==="Enter") ok(); });
+    setTimeout(function(){ pw.focus(); },50);
+  });
+}
 (async function init(){
   const params=new URLSearchParams(location.search);
   const mode=params.get("mode");
   isAdmin=params.get("admin")==="1";
+  if(isAdmin){ const _ok=await requireAdminAuth(); if(!_ok) isAdmin=false; } // รหัสผ่านเข้าหลังบ้าน
   if(!mode && !isAdmin) document.body.classList.add("viewonly"); // ผู้ติดตาม = ดูอย่างเดียว
   if(mode==="view"){document.body.classList.add("viewonly");const hash=location.hash.slice(1);if(hash){try{state=JSON.parse(decodeURIComponent(hash));}catch(e){}}}
   if(mode==="queue"){
