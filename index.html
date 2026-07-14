@@ -65,11 +65,10 @@ button:focus-visible{outline:2px solid var(--accent)}
 .btn-primary:hover{background:#17488a;color:#fff}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .mini{padding:4px 9px;font-size:13px}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-@media(max-width:720px){.stats{grid-template-columns:1fr 1fr}}
-.stat{background:var(--accent-soft);border-radius:9px;padding:12px 14px}
-.stat .n{font-size:34px;font-weight:800;line-height:1.1}
-.stat .l{font-size:15px;color:var(--ink-soft);margin-top:4px;font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--accent-soft);border-radius:9px;padding:10px 12px}
+.stat .n{font-size:26px;font-weight:800;line-height:1.1}
+.stat .l{font-size:13px;color:var(--ink-soft);margin-top:4px;font-weight:500}
 .daylist{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:8px}
 .dayrow{display:grid;grid-template-columns:34px 150px 1fr;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
 .dayrow:last-child{border-bottom:none}
@@ -256,6 +255,7 @@ body.qfs-open{overflow:hidden}
       <div class="stat"><div class="n" id="stDays">–</div><div class="l">วันประชุม</div></div>
       <div class="stat"><div class="n" id="stHours">–</div><div class="l">ชั่วโมงพิจารณารวม (หักพัก)</div></div>
       <div class="stat"><div class="n" id="stOrgs">–</div><div class="l">หน่วยงานที่จัดแล้ว / ทั้งหมด</div></div>
+      <div class="stat"><div class="n" id="stAvg">–</div><div class="l">เฉลี่ยต่อหน่วยงาน</div></div>
       <div class="stat edit-only" id="viewerStat"><div class="n" id="vcTotal">–</div><div class="l">กำลังติดตามขณะนี้<br><span style="font-size:11px;color:var(--ink-soft)">เต็ม <span id="vcFull">–</span> · คิว <span id="vcQueue">–</span> · คิว+เวลา <span id="vcQTime">–</span></span></div></div>
     </div>
   </div>
@@ -983,6 +983,7 @@ function render(){
   document.getElementById("stDays").textContent=state.days.length;
   document.getElementById("stHours").textContent=(totalNet/60).toFixed(1);
   document.getElementById("stOrgs").textContent=assignedCount+" / "+state.orgs.length;
+  {const _a=document.getElementById("stAvg");if(_a)_a.textContent=assignedCount?minToDur(totalNet/assignedCount):"–";}
   document.getElementById("liveNow").textContent=minToHM(currentClock())+(clockOverrideMin!=null?" (ตั้งเอง)":"");
   // อัปเดตปุ่มพักการประชุม (toggle) ตามสถานะของวันที่เปิดอยู่
   const pauseBtn=document.getElementById("pauseMeetingBtn");
