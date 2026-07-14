@@ -398,6 +398,7 @@ body.qfs-open{overflow:hidden}
 const STORE_KEY="budgetSched_v3";
 const BACKEND_URL="https://script.google.com/macros/s/AKfycbwe3m4CEY_Gf1T4s_eJKbHCMwX1Hyeuootuyemp4C_yKUSlVPVmtWFy4RSaLiS3pAhe/exec"; // Apps Script Web App (/exec)
 let isAdmin=false; // ?admin=1 = แอดมิน (แก้ได้) / ไม่มี = ผู้ติดตาม (ดูอย่างเดียว)
+let lastSyncedJSON=""; // สแนปช็อต state ล่าสุดที่ตรงกับ backend (ใช้ตรวจว่ามีเครื่องอื่นแก้)
 const THDAYS=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
 const THMON_FULL=["","มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const THMON_SHORT=["","ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
@@ -442,14 +443,21 @@ function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function save(){
   if(document.body.classList.contains("viewonly"))return;
-  try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(e){console.error(e);}
+  const payload=JSON.stringify(state);
+  try{localStorage.setItem(STORE_KEY,payload);}catch(e){console.error(e);}
   if(BACKEND_URL&&isAdmin){
-    fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:JSON.stringify(state)})}).catch(e=>console.error("save backend fail",e));
+    lastSyncedJSON=payload; // การแก้ของเราเอง ไม่ต้อง sync กลับ
+    fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:payload})}).catch(e=>console.error("save backend fail",e));
   }
 }
 async function loadFromBackend(){
   if(!BACKEND_URL)return null;
   try{const r=await fetch(BACKEND_URL);const j=await r.json();if(j.ok&&j.state){return JSON.parse(j.state);}}catch(e){console.error("load backend fail",e);}
+  return null;
+}
+async function loadRawFromBackend(){
+  if(!BACKEND_URL)return null;
+  try{const r=await fetch(BACKEND_URL);const j=await r.json();if(j.ok)return j.state||"";}catch(e){}
   return null;
 }
 function load(){try{const s=localStorage.getItem(STORE_KEY);return s?JSON.parse(s):null;}catch(e){return null;}}
@@ -1457,6 +1465,24 @@ function requireAdminAuth(){
     setInterval(async ()=>{
       const remote=await loadFromBackend();
       if(remote){ state=remote; recalcAllBudgets(); showResult(); render(); }
+    },3000);
+  }
+  // แอดมิน: ซิงก์ข้ามเครื่อง — ถ้าอีกเครื่องแก้ ก็เห็นตามภายใน ~3 วิ
+  if(BACKEND_URL && isAdmin){
+    (async ()=>{ lastSyncedJSON=(await loadRawFromBackend())||(state?JSON.stringify(state):""); })();
+    setInterval(async ()=>{
+      const ae=document.activeElement;
+      if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return; // กำลังแก้ไขช่องอยู่ อย่าทับ
+      if(document.getElementById("resultWrap").style.display==="none") return; // อยู่หน้าตั้งค่า/ยังไม่ล็อกอิน ไม่ซิงก์
+      const remote=await loadRawFromBackend();
+      if(remote==null || remote===lastSyncedJSON) return; // ไม่มีการเปลี่ยนจากเครื่องอื่น (รวมถึงของเราเอง)
+      try{
+        const st=JSON.parse(remote);
+        if(!st||!st.days) return;
+        state=st; lastSyncedJSON=remote;
+        recalcAllBudgets(); showResult(); render();
+        toast("อัปเดตจากอีกเครื่องแล้ว");
+      }catch(e){}
     },3000);
   }
   startPresence_(); // เริ่มนับ/แสดงผู้ติดตาม
