@@ -317,7 +317,7 @@ body.qfs-open{overflow:hidden}
     <div style="overflow-x:auto">
       <table>
         <thead><tr>
-          <th style="width:70px">คิว</th><th>หน่วยงาน</th><th style="width:96px">สถานะ</th>
+          <th style="width:78px">คิว<div class="edit-only" style="margin-top:3px"><button class="qbtn btn-primary" onclick="applyQueueOrder()">OK</button></div></th><th>หน่วยงาน</th><th style="width:96px">สถานะ</th>
           <th style="width:100px">งบเวลา</th><th style="width:96px">เริ่มตามแผน</th><th style="width:96px">จบตามแผน</th><th style="width:78px">เริ่มจริง</th>
           <th style="width:78px">จบจริง</th><th style="width:86px">ใช้จริง</th>
           <th style="width:92px">+ / –</th><th style="width:230px" class="edit-only">การทำงาน</th>
@@ -837,11 +837,30 @@ function moveQueueTo(fromPos,targetVal){
   freezePlanTimes(dayIdx);
   save();render();
 }
-// งานข้อ 2: ช่องกรอกลำดับ + ปุ่ม OK (แสดงลำดับปัจจุบันในคิวรวม)
+// งานข้อ 2: ช่องกรอกลำดับ (เลขเดียวต่อแถว) — กรอกลำดับใหม่แล้วกดปุ่ม OK ที่หัวคอลัมน์คิว
 function posInput(pos){
-  return '<span style="display:inline-flex;gap:2px;align-items:center">'
-    +'<input type="number" min="1" value="'+(pos+1)+'" title="ลำดับในคิว (รวมแถวพัก) — กรอกเลขแล้วกด OK เพื่อย้าย" style="width:44px;padding:2px 4px;text-align:center;font-size:13px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();moveQueueTo('+pos+',this.value);}">'
-    +'<button class="qbtn" onclick="moveQueueTo('+pos+',this.previousElementSibling.value)">OK</button></span>';
+  return '<input type="number" min="1" class="qposinput" value="'+(pos+1)+'" style="width:48px;padding:3px 5px;text-align:center;font-size:14px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();applyQueueOrder();}">';
+}
+// ปุ่ม OK เดียวที่หัวคอลัมน์คิว → อ่านเลขที่กรอกในแต่ละแถว แล้วย้าย item ไปตามลำดับที่กรอก (รวมแถวพัก)
+function applyQueueOrder(){
+  if(!state)return;
+  const items=dayQueue(activeDay);
+  const inputs=[...document.querySelectorAll('#orgBody .qposinput')];
+  const changes=[];
+  inputs.forEach((inp,i)=>{ const v=parseInt(inp.value,10); if(!isNaN(v)&&v!==(i+1)) changes.push({from:i,to:v}); });
+  if(!changes.length){toast("กรอกลำดับใหม่ในช่องคิวก่อน");return;}
+  let arr=items.slice();
+  changes.forEach(ch=>{
+    const cur=arr.indexOf(items[ch.from]); if(cur<0)return;
+    let to=Math.max(1,Math.min(arr.length,ch.to))-1;
+    const moved=arr.splice(cur,1)[0]; arr.splice(to,0,moved);
+  });
+  writeQueueSeq(activeDay,arr);
+  recalcDayBudgets(activeDay);
+  state.orgs.filter(x=>x.dayIdx===activeDay&&x.startAct==null).forEach(x=>{x.planStart=null;x.planEnd=null;});
+  freezePlanTimes(activeDay);
+  save();render();
+  toast("จัดลำดับคิวใหม่แล้ว");
 }
 
 /* ---- org actions ---- */
@@ -1199,7 +1218,7 @@ function render(){
       if(delta!=null){const cls=delta>=0?"plus":"minus";deltaCell='<span class="delta '+cls+'">'+(delta>=0?"+":"−")+minToDur(Math.abs(delta))+'</span>';}
       let queueCell;
       if(viewonly){queueCell='<b>'+orgSeqNo+'</b>';}
-      else{queueCell='<b>'+orgSeqNo+'</b> '+posInput(pos);}
+      else{queueCell=posInput(pos);}
       // เริ่ม/จบตามแผน: freeze ค่าครั้งแรกที่เห็น แล้ว lock ไว้ (ไม่ขยับตอนกดเริ่ม/ปิด/แขวน)
       const autoStart=(planT&&planT.startMin!=null)?minToHM(planT.startMin):null;
       const autoEnd=(planT&&planT.endMin!=null)?minToHM(planT.endMin):null;
