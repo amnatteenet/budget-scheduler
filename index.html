@@ -399,6 +399,8 @@ const STORE_KEY="budgetSched_v3";
 const BACKEND_URL="https://script.google.com/macros/s/AKfycbwe3m4CEY_Gf1T4s_eJKbHCMwX1Hyeuootuyemp4C_yKUSlVPVmtWFy4RSaLiS3pAhe/exec"; // Apps Script Web App (/exec)
 let isAdmin=false; // ?admin=1 = แอดมิน (แก้ได้) / ไม่มี = ผู้ติดตาม (ดูอย่างเดียว)
 let lastSyncedJSON=""; // สแนปช็อต state ล่าสุดที่ตรงกับ backend (ใช้ตรวจว่ามีเครื่องอื่นแก้)
+let suppressSyncUntil=0; // งานข้อ 1: หยุด admin sync poll ชั่วคราวหลังเราแก้เอง (กันคิวเด้งกลับก่อนบันทึกเสร็จ)
+const ADMIN_TOKEN_KEY="bs_admin_token"; // งานข้อ 4: เก็บ token เพื่อจำ login ในเครื่อง
 const THDAYS=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
 const THMON_FULL=["","มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const THMON_SHORT=["","ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
@@ -447,6 +449,7 @@ function save(){
   try{localStorage.setItem(STORE_KEY,payload);}catch(e){console.error(e);}
   if(BACKEND_URL&&isAdmin){
     lastSyncedJSON=payload; // การแก้ของเราเอง ไม่ต้อง sync กลับ
+    suppressSyncUntil=Date.now()+3500; // งานข้อ 1: กัน admin sync poll อ่าน backend จังหวะก่อนบันทึกเสร็จ (คิวเด้งกลับ)
     fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:payload})}).catch(e=>console.error("save backend fail",e));
   }
 }
@@ -809,6 +812,37 @@ function rebuildDayPlan(dayIdx){
   // ถ้ามีพักในคิว ให้จัดเวลาตามช่วง (เช้า/บ่าย/ค่ำ) ด้วย
   if(state.days[dayIdx].lunchSeq!=null||state.days[dayIdx].dinnerSeq!=null)recomputePlanTimes(dayIdx);
 }
+// งานข้อ 3: คำนวณทั้งวันใหม่ (งบเวลา + เวลาเริ่ม/จบตามแผนของทุกหน่วย) เมื่อเปลี่ยนเวลาเริ่ม/จบของวัน
+function recomputeWholeDay(dayIdx){
+  state.orgs.filter(o=>o.dayIdx===dayIdx).forEach(o=>{o.planStart=null;o.planEnd=null;o.baseEnd=null;o.planEdited=false;});
+  recalcDayBudgets(dayIdx);
+  freezePlanTimes(dayIdx);
+  const dd=state.days[dayIdx];
+  if(dd.lunchSeq!=null||dd.dinnerSeq!=null)recomputePlanTimes(dayIdx);
+}
+// งานข้อ 2: ย้าย item (หน่วยงาน/พัก) ไปยังตำแหน่งที่กรอกในคิวรวม (นับรวมแถวพักด้วย)
+function moveQueueTo(fromPos,targetVal){
+  const dayIdx=activeDay;
+  const items=dayQueue(dayIdx);
+  let to=parseInt(targetVal,10);
+  if(isNaN(to)){toast("กรอกลำดับเป็นตัวเลข");return;}
+  to=Math.max(1,Math.min(items.length,to))-1; // clamp เป็น index 0-based
+  if(to===fromPos){render();return;}
+  const moved=items.splice(fromPos,1)[0];
+  items.splice(to,0,moved);
+  writeQueueSeq(dayIdx,items);
+  recalcDayBudgets(dayIdx);
+  // คำนวณเวลาตามแผนใหม่เฉพาะหน่วยที่ยังไม่เริ่ม (แถวพักถูกคำนวณผ่าน cursor ใน planStartTimes)
+  state.orgs.filter(x=>x.dayIdx===dayIdx&&x.startAct==null).forEach(x=>{x.planStart=null;x.planEnd=null;});
+  freezePlanTimes(dayIdx);
+  save();render();
+}
+// งานข้อ 2: ช่องกรอกลำดับ + ปุ่ม OK (แสดงลำดับปัจจุบันในคิวรวม)
+function posInput(pos){
+  return '<span style="display:inline-flex;gap:2px;align-items:center">'
+    +'<input type="number" min="1" value="'+(pos+1)+'" title="ลำดับในคิว (รวมแถวพัก) — กรอกเลขแล้วกด OK เพื่อย้าย" style="width:44px;padding:2px 4px;text-align:center;font-size:13px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();moveQueueTo('+pos+',this.value);}">'
+    +'<button class="qbtn" onclick="moveQueueTo('+pos+',this.previousElementSibling.value)">OK</button></span>';
+}
 
 /* ---- org actions ---- */
 function startOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=minToHM(currentClock());const dd=state.days[o.dayIdx];if(dd)dd.lastActivity=null;recalcDayBudgets(o.dayIdx);save();render();}
@@ -863,8 +897,25 @@ function setBreakTime(wrap){const d=state.days[activeDay];const kind=wrap.getAtt
 window.onPlanTime=function(wrap){const id=+wrap.getAttribute("data-id");const which=wrap.getAttribute("data-which");const o=state.orgs.find(x=>x.id===id);if(!o)return;const v=timeSelVal(wrap);
   const oldVal=(which==="start")?o.planStart:o.planEnd;
   if(oldVal===v)return; // ค่าไม่เปลี่ยน ไม่ต้องทำซ้ำ (กัน double event)
-  if(which==="start")o.planStart=v;else o.planEnd=v;
+  // งานข้อ 3: แก้ "เริ่มตามแผนของคิวแรก" หรือ "จบตามแผนของคิวสุดท้าย" → ตั้งเป็นเวลาเริ่ม/จบของวัน แล้วคำนวณทั้งวันใหม่
+  const dayIdx=o.dayIdx;
+  const items=dayQueue(dayIdx);
+  const isFirst=items.length>0 && items[0].type==="org" && items[0].org.id===id;
+  const isLast=items.length>0 && items[items.length-1].type==="org" && items[items.length-1].org.id===id;
+  if(which==="start" && isFirst){
+    state.days[dayIdx].start=v;
+    recomputeWholeDay(dayIdx);
+    save();render();toast("ตั้งเป็นเวลาเริ่มของวัน · คำนวณทั้งวันใหม่แล้ว");
+    return;
+  }
+  if(which==="end" && isLast){
+    state.days[dayIdx].end=v;
+    recomputeWholeDay(dayIdx);
+    save();render();toast("ตั้งเป็นเวลาจบของวัน · คำนวณทั้งวันใหม่แล้ว");
+    return;
+  }
   // ผู้ใช้แก้เวลาตามแผนเอง → งบเวลา = ช่วงเวลาตามแผน (จบ-เริ่ม) และตั้งธงว่าแก้เอง (priority สูงสุด ไม่ถูกเฉลี่ยทับ)
+  if(which==="start")o.planStart=v;else o.planEnd=v;
   o.planEdited=true;
   if(o.planStart!=null&&o.planEnd!=null){const dur=hmToMin(o.planEnd)-hmToMin(o.planStart);o.budget=Math.max(0,dur);}
   save();render();};
@@ -1111,7 +1162,7 @@ function render(){
         else brkAction='<button class="mini" onclick="undoBreak(\''+kind+'\')">ยกเลิก</button>';
         brkAction+=' <button class="mini" onclick="removeBreakFromQueue(\''+kind+'\')">นำออก</button>';
       }
-      tr.innerHTML='<td>–</td>'
+      tr.innerHTML='<td>'+(viewonly?'–':posInput(pos))+'</td>'
         +'<td colspan="2"><span class="brklabel">'+icon+' '+label+'</span></td>'
         +'<td class="budcell">'+minToDur(planDur)+'</td>'
         +'<td class="timecell" style="color:var(--warn)">'+planStartCell+'</td>'
@@ -1146,8 +1197,9 @@ function render(){
       }
       let deltaCell="–";
       if(delta!=null){const cls=delta>=0?"plus":"minus";deltaCell='<span class="delta '+cls+'">'+(delta>=0?"+":"−")+minToDur(Math.abs(delta))+'</span>';}
-      let queueCell='<b>'+orgSeqNo+'</b>';
-      if(!viewonly){queueCell+=' <button class="qbtn" onclick="moveOrg('+o.id+',-1)" '+(pos===0?"disabled":"")+'>▲</button><button class="qbtn" onclick="moveOrg('+o.id+',1)" '+(pos===totalItems-1?"disabled":"")+'>▼</button>';}
+      let queueCell;
+      if(viewonly){queueCell='<b>'+orgSeqNo+'</b>';}
+      else{queueCell='<b>'+orgSeqNo+'</b> '+posInput(pos);}
       // เริ่ม/จบตามแผน: freeze ค่าครั้งแรกที่เห็น แล้ว lock ไว้ (ไม่ขยับตอนกดเริ่ม/ปิด/แขวน)
       const autoStart=(planT&&planT.startMin!=null)?minToHM(planT.startMin):null;
       const autoEnd=(planT&&planT.endMin!=null)?minToHM(planT.endMin):null;
@@ -1356,9 +1408,11 @@ function resetAll(){
   if(el)setTimeout(()=>el.focus(),50);
 }
 function closePwDialog(){document.getElementById("pwDialog").style.display="none";}
-function confirmReset(){
+async function confirmReset(){
   const pw=document.getElementById("pwInput").value;
-  if(pw!=="#S@pa6191"){document.getElementById("pwError").style.display="block";return;}
+  const token=await backendAuth(pw); // งานข้อ 4: ตรวจรหัสผ่านที่ backend
+  if(!token){document.getElementById("pwError").style.display="block";return;}
+  try{localStorage.setItem(ADMIN_TOKEN_KEY,token);}catch(e){} // คงสถานะ login ไว้หลังล้างข้อมูล
   closePwDialog();
   localStorage.removeItem(STORE_KEY);
   if(BACKEND_URL){
@@ -1382,9 +1436,30 @@ function startPresence_(){
     window.addEventListener("pagehide",function(){try{navigator.sendBeacon(BACKEND_URL,JSON.stringify({action:"leave",sid:VIEW_SID}));}catch(e){}});
   }
 }
+// งานข้อ 4: ตรวจรหัสผ่านผ่าน backend (รหัสไม่อยู่ในซอร์ส client) — คืน token ถ้าถูก
+async function backendAuth(pw){
+  if(!BACKEND_URL)return "";
+  try{
+    const r=await fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"auth",pw:pw})});
+    const j=await r.json();
+    return (j&&j.ok&&j.token)?j.token:"";
+  }catch(e){return "";}
+}
+// ตรวจ token ที่จำไว้ในเครื่องว่ายัง valid ไหม
+async function backendVerify(token){
+  if(!BACKEND_URL||!token)return false;
+  try{
+    const r=await fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"verify",token:token})});
+    const j=await r.json();
+    return !!(j&&j.ok&&j.valid);
+  }catch(e){return false;}
+}
 function requireAdminAuth(){
   return new Promise(function(resolve){
-    try{ if(sessionStorage.getItem("bs_admin_ok")==="1") return resolve(true); }catch(e){}
+    (async function(){
+    // จำ login ในเครื่อง: ถ้ามี token ที่ backend ยืนยันว่ายัง valid → ข้าม modal
+    let savedTok=""; try{ savedTok=localStorage.getItem(ADMIN_TOKEN_KEY)||""; }catch(e){}
+    if(savedTok && await backendVerify(savedTok)) return resolve(true);
     const ov=document.createElement("div");
     ov.style.cssText="position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center";
     ov.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px 26px;max-width:340px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.3)">'
@@ -1397,14 +1472,21 @@ function requireAdminAuth(){
       +'<button id="alCancel">ดูอย่างเดียว</button>'
       +'<button id="alOk" class="btn-primary">เข้าสู่ระบบ</button></div></div>';
     document.body.appendChild(ov);
-    const pw=ov.querySelector("#alPw"), show=ov.querySelector("#alShow"), err=ov.querySelector("#alErr");
+    const pw=ov.querySelector("#alPw"), show=ov.querySelector("#alShow"), err=ov.querySelector("#alErr"), okBtn=ov.querySelector("#alOk");
     show.onchange=function(){ pw.type=show.checked?"text":"password"; };
-    function ok(){ if(pw.value==="#S@pa6191"){ try{sessionStorage.setItem("bs_admin_ok","1");}catch(e){} ov.remove(); resolve(true); } else { err.style.display="block"; pw.select(); } }
+    async function ok(){ // งานข้อ 4: ตรวจรหัสผ่านที่ backend แล้วเก็บ token
+      err.style.display="none"; okBtn.disabled=true; okBtn.textContent="กำลังตรวจสอบ...";
+      const token=await backendAuth(pw.value);
+      okBtn.disabled=false; okBtn.textContent="เข้าสู่ระบบ";
+      if(token){ try{localStorage.setItem(ADMIN_TOKEN_KEY,token);}catch(e){} ov.remove(); resolve(true); }
+      else { err.style.display="block"; pw.select(); }
+    }
     function cancel(){ ov.remove(); resolve(false); }
-    ov.querySelector("#alOk").onclick=ok;
+    okBtn.onclick=ok;
     ov.querySelector("#alCancel").onclick=cancel;
     pw.addEventListener("keydown",function(e){ if(e.key==="Enter") ok(); });
     setTimeout(function(){ pw.focus(); },50);
+    })();
   });
 }
 (async function init(){
@@ -1472,6 +1554,7 @@ function requireAdminAuth(){
   if(BACKEND_URL && isAdmin){
     (async ()=>{ lastSyncedJSON=(await loadRawFromBackend())||(state?JSON.stringify(state):""); })();
     setInterval(async ()=>{
+      if(Date.now()<suppressSyncUntil) return; // งานข้อ 1: เพิ่งแก้เอง หยุดอ่าน backend ~3.5 วิ (กันเด้งกลับก่อนบันทึกเสร็จ)
       const ae=document.activeElement;
       if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return; // กำลังแก้ไขช่องอยู่ อย่าทับ
       if(document.getElementById("resultWrap").style.display==="none") return; // อยู่หน้าตั้งค่า/ยังไม่ล็อกอิน ไม่ซิงก์
