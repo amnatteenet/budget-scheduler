@@ -818,6 +818,13 @@ function rebuildDayPlan(dayIdx){
   // ถ้ามีพักในคิว ให้จัดเวลาตามช่วง (เช้า/บ่าย/ค่ำ) ด้วย
   if(state.days[dayIdx].lunchSeq!=null||state.days[dayIdx].dinnerSeq!=null)recomputePlanTimes(dayIdx);
 }
+// เมื่อปิดหน่วยงาน (เสร็จ/เกินเวลา): คำนวณงบเวลาใหม่ + ไหลเวลาตามแผนของหน่วยที่ยังไม่เริ่มให้เริ่มต่อจาก "เวลาจบจริง" ล่าสุด
+// (ไม่ใช้ recomputePlanTimes เพราะตัวนั้นจัดจากต้นช่วง ไม่อิงเวลาจริง) — คงค่าที่ผู้ใช้แก้เอง (planEdited) ไว้
+function reflowWaiting(dayIdx){
+  recalcDayBudgets(dayIdx);
+  state.orgs.filter(o=>o.dayIdx===dayIdx&&o.startAct==null&&!o.planEdited).forEach(o=>{o.planStart=null;o.planEnd=null;});
+  freezePlanTimes(dayIdx);
+}
 // งานข้อ 3: คำนวณทั้งวันใหม่ (งบเวลา + เวลาเริ่ม/จบตามแผนของทุกหน่วย) เมื่อเปลี่ยนเวลาเริ่ม/จบของวัน
 function recomputeWholeDay(dayIdx){
   state.orgs.filter(o=>o.dayIdx===dayIdx).forEach(o=>{o.planStart=null;o.planEnd=null;o.baseEnd=null;o.planEdited=false;});
@@ -890,8 +897,8 @@ function applyQueueOrder(){
 function startOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=minToHM(currentClock());const dd=state.days[o.dayIdx];if(dd)dd.lastActivity=null;recalcDayBudgets(o.dayIdx);save();render();}
 // ประชุมต่ออัตโนมัติเมื่อกดปุ่มจัดการหน่วยงาน (ปิด/แขวน/รีเซ็ต)
 function resumeMeetingIfPaused(dayIdx){const d=state.days[dayIdx];if(d&&d.meetingPaused){d.meetingPaused=false;d.pauseType=null;d.pauseOrgId=null;}}
-function finishOrg(id){const o=state.orgs.find(x=>x.id===id);if(o.startAct==null)o.startAct=minToHM(currentClock());o.endAct=minToHM(currentClock());resumeMeetingIfPaused(o.dayIdx);recalcDayBudgets(o.dayIdx);save();render();toast("บันทึกและคำนวณใหม่แล้ว");}
-function undoOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=null;o.endAct=null;resumeMeetingIfPaused(o.dayIdx);recalcDayBudgets(o.dayIdx);save();render();}
+function finishOrg(id){const o=state.orgs.find(x=>x.id===id);if(o.startAct==null)o.startAct=minToHM(currentClock());o.endAct=minToHM(currentClock());resumeMeetingIfPaused(o.dayIdx);reflowWaiting(o.dayIdx);save();render();toast("บันทึกและคำนวณใหม่แล้ว");}
+function undoOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=null;o.endAct=null;resumeMeetingIfPaused(o.dayIdx);reflowWaiting(o.dayIdx);save();render();}
 
 /* ---- queue management ---- */
 function addToDay(id){const o=state.orgs.find(x=>x.id===id);o.dayIdx=activeDay;o.seq=dayQueue(activeDay).length+1;o.suspended=false;o.planStart=null;o.planEnd=null;rebuildDayPlan(activeDay);save();render();}
