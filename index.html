@@ -788,22 +788,30 @@ function recalcDayBudgets(dayIdx){
     deadAir=Math.max(0,gap);
   }
 
-  // เวลาเหลือ = สุทธิ − ใช้ไปแล้ว − dead air
-  const usable=Math.max(0, netTotal - usedByDone - deadAir);
-
   // ตัวหาร = หน่วยที่ยังไม่จบ (รอ + กำลังทำ)
   const notDone=waiting.length+inProgressOrgs.length;
-  let divisor;
-  if(!hasActivity){ divisor=Math.max(d.target||0, dayOrgs.length); }
-  else { divisor=notDone; }
-  const per=divisor>0?usable/divisor:0;
-  // เขียนงบเฉพาะหน่วยที่ "รอคิว"; หน่วยที่กำลังพิจารณาคงงบเดิม (ไม่แตะจนกดปิด)
-  // ข้อยกเว้น: ถ้ามีหน่วยกำลังพิจารณาแต่ "ยังไม่มีใครจบ" (เพิ่งกดเริ่มหน่วยแรก)
-  //   → ยังไม่เขียนงบทับ คงงบที่วางแผนไว้ (แบ่งช่วง) จนกว่าจะกดปิดหน่วยแรก
   const noneCompleted = doneOrgs.length===0;
+  // ข้อยกเว้น: เพิ่งกดเริ่มหน่วยแรก (มีหน่วยกำลังทำแต่ยังไม่มีใครจบ) → คงงบเดิม ยังไม่คำนวณทับ
   if(inProgressOrgs.length>0 && noneCompleted && !d.lastActivity){
-    return; // เพิ่งเริ่มหน่วยแรก ยังไม่มีการปิด → งบนิ่ง
+    return; // งบนิ่งจนกว่าจะกดปิดหน่วยแรก
   }
+  let per;
+  if(!hasActivity){
+    // ยังไม่เริ่มประชุม: เฉลี่ยเวลารวมทั้งวันสุทธิให้ทุกหน่วยเท่ากัน
+    const divisor=Math.max(d.target||0, dayOrgs.length);
+    per=divisor>0?netTotal/divisor:0;
+  } else {
+    // เริ่มประชุมแล้ว → "รัดให้พอดีเวลาเลิกวัน"
+    // งบหน่วยที่เหลือ = (เวลาเลิกของวัน − เวลาจบจริงล่าสุด[หรือนาฬิกาถ้าปล่อยว่าง] − พักที่ยังไม่ผ่าน) ÷ จำนวนหน่วยที่ยังไม่จบ
+    let ref=dStart;
+    if(doneOrgs.length)ref=Math.max.apply(null,doneOrgs.map(o=>hmToMin(o.endAct)));
+    if(d.lastActivity)ref=Math.max(ref,d.lastActivity);
+    if(inProgressOrgs.length===0)ref=Math.max(ref,currentClock()); // ไม่มีใครกำลังทำ → หักเวลาที่ปล่อยว่างจนถึงตอนนี้ด้วย
+    const remBreak=breakRemainingAfter(d,d.lunchS,d.lunchE,ref)+breakRemainingAfter(d,d.dinnerS,d.dinnerE,ref);
+    const remain=Math.max(0,dEnd-ref-remBreak);
+    per=notDone>0?remain/notDone:0;
+  }
+  // เขียนงบเฉพาะหน่วยที่ "รอคิว"; หน่วยที่กำลังพิจารณาคงงบเดิม (ไม่แตะจนกดปิด)
   dayOrgs.forEach(o=>{if(o.startAct==null&&o.endAct==null)o.budget=per;});
 }
 function recalcAllBudgets(){for(let i=0;i<state.days.length;i++)recalcDayBudgets(i);}
