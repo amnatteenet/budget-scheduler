@@ -173,6 +173,12 @@ body.qfs-open{overflow:hidden}
 .selrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .selrow select{max-width:340px}
 @media print{.edit-only,.livebar,.daytabs,.pool,header button{display:none!important}.panel{break-inside:avoid}}
+/* ลากวางจัดลำดับคิว */
+.draghandle{cursor:grab;color:var(--ink-soft);font-size:15px;margin-right:5px;user-select:none;display:inline-block;vertical-align:middle;line-height:1}
+.draghandle:active{cursor:grabbing}
+tr.dragging{opacity:.45}
+tr.drop-before td{box-shadow:inset 0 3px 0 0 var(--accent)}
+tr.drop-after td{box-shadow:inset 0 -3px 0 0 var(--accent)}
 </style>
 </head>
 <body>
@@ -317,7 +323,7 @@ body.qfs-open{overflow:hidden}
     <div style="overflow-x:auto">
       <table>
         <thead><tr>
-          <th style="width:78px">คิว<div class="edit-only" style="margin-top:3px"><button class="qbtn btn-primary" onclick="applyQueueOrder()">OK</button></div></th><th>หน่วยงาน</th><th style="width:96px">สถานะ</th>
+          <th style="width:96px">คิว<div class="edit-only" style="margin-top:3px"><button class="qbtn btn-primary" onclick="applyQueueOrder()">OK</button></div></th><th>หน่วยงาน</th><th style="width:96px">สถานะ</th>
           <th style="width:100px">งบเวลา</th><th style="width:96px">เริ่มตามแผน</th><th style="width:96px">จบตามแผน</th><th style="width:78px">เริ่มจริง</th>
           <th style="width:78px">จบจริง</th><th style="width:86px">ใช้จริง</th>
           <th style="width:92px">+ / –</th><th style="width:230px" class="edit-only">การทำงาน</th>
@@ -841,6 +847,23 @@ function moveQueueTo(fromPos,targetVal){
 function posInput(pos){
   return '<input type="number" min="1" class="qposinput" value="'+(pos+1)+'" style="width:48px;padding:3px 5px;text-align:center;font-size:14px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();applyQueueOrder();}">';
 }
+// ที่จับสำหรับลากวาง
+function dragHandle(){ return '<span class="draghandle" draggable="true" title="ลากเพื่อย้ายลำดับ">\u283F</span>'; }
+// ลากวาง: ย้าย item จากตำแหน่ง from ไปแทรกที่ index target (0-based ในคิวรวม) แล้วรันเลขลำดับใหม่
+function dragReorderQueue(from, target){
+  const items=dayQueue(activeDay);
+  if(from<0||from>=items.length)return;
+  const moved=items.splice(from,1)[0];
+  let insertAt = (from<target) ? target-1 : target;
+  insertAt=Math.max(0,Math.min(items.length,insertAt));
+  items.splice(insertAt,0,moved);
+  writeQueueSeq(activeDay,items);
+  recalcDayBudgets(activeDay);
+  state.orgs.filter(x=>x.dayIdx===activeDay&&x.startAct==null).forEach(x=>{x.planStart=null;x.planEnd=null;});
+  freezePlanTimes(activeDay);
+  save();render();
+  toast("จัดลำดับคิวใหม่แล้ว");
+}
 // ปุ่ม OK เดียวที่หัวคอลัมน์คิว → อ่านเลขที่กรอกในแต่ละแถว แล้วย้าย item ไปตามลำดับที่กรอก (รวมแถวพัก)
 function applyQueueOrder(){
   if(!state)return;
@@ -1133,6 +1156,41 @@ function render(){
     };
     body.addEventListener("change",handler);
     body.addEventListener("input",handler);
+    // ลากวางจัดลำดับคิว (event delegation)
+    let __dragFrom=null;
+    body.addEventListener("dragstart",(e)=>{
+      const h=e.target.closest(".draghandle"); if(!h)return;
+      const tr=h.closest("tr[data-pos]"); if(!tr)return;
+      __dragFrom=+tr.dataset.pos;
+      e.dataTransfer.effectAllowed="move";
+      try{e.dataTransfer.setData("text/plain",String(__dragFrom));}catch(_){}
+      tr.classList.add("dragging");
+    });
+    body.addEventListener("dragover",(e)=>{
+      if(__dragFrom==null)return;
+      const tr=e.target.closest("tr[data-pos]"); if(!tr)return;
+      e.preventDefault();
+      const rect=tr.getBoundingClientRect();
+      const after=(e.clientY-rect.top)>rect.height/2;
+      [...body.querySelectorAll("tr")].forEach(r=>r.classList.remove("drop-before","drop-after"));
+      tr.classList.add(after?"drop-after":"drop-before");
+    });
+    body.addEventListener("drop",(e)=>{
+      if(__dragFrom==null)return;
+      e.preventDefault();
+      const tr=e.target.closest("tr[data-pos]");
+      if(tr){
+        const to=+tr.dataset.pos;
+        const rect=tr.getBoundingClientRect();
+        const after=(e.clientY-rect.top)>rect.height/2;
+        dragReorderQueue(__dragFrom, after?to+1:to);
+      }
+      __dragFrom=null;
+    });
+    body.addEventListener("dragend",()=>{
+      __dragFrom=null;
+      [...body.querySelectorAll("tr")].forEach(r=>r.classList.remove("drop-before","drop-after","dragging"));
+    });
     body.dataset.planListener="1";
   }
   body.innerHTML="";
@@ -1157,6 +1215,7 @@ function render(){
       const icon=kind==="lunch"?"☕":"🌆";
       const tr=document.createElement("tr");
       tr.className="breakrow";
+      tr.dataset.pos=pos;
       // เริ่ม/จบตามแผน (= เวลาพักที่ตั้งไว้) แก้ได้
       let planStartCell,planEndCell;
       if(viewonly){planStartCell=bS||"–";planEndCell=bE||"–";}
@@ -1181,7 +1240,7 @@ function render(){
         else brkAction='<button class="mini" onclick="undoBreak(\''+kind+'\')">ยกเลิก</button>';
         brkAction+=' <button class="mini" onclick="removeBreakFromQueue(\''+kind+'\')">นำออก</button>';
       }
-      tr.innerHTML='<td>'+(viewonly?'–':posInput(pos))+'</td>'
+      tr.innerHTML='<td>'+(viewonly?'–':(dragHandle()+posInput(pos)))+'</td>'
         +'<td colspan="2"><span class="brklabel">'+icon+' '+label+'</span></td>'
         +'<td class="budcell">'+minToDur(planDur)+'</td>'
         +'<td class="timecell" style="color:var(--warn)">'+planStartCell+'</td>'
@@ -1218,7 +1277,8 @@ function render(){
       if(delta!=null){const cls=delta>=0?"plus":"minus";deltaCell='<span class="delta '+cls+'">'+(delta>=0?"+":"−")+minToDur(Math.abs(delta))+'</span>';}
       let queueCell;
       if(viewonly){queueCell='<b>'+orgSeqNo+'</b>';}
-      else{queueCell=posInput(pos);}
+      else{queueCell=dragHandle()+posInput(pos);}
+      tr.dataset.pos=pos;
       // เริ่ม/จบตามแผน: freeze ค่าครั้งแรกที่เห็น แล้ว lock ไว้ (ไม่ขยับตอนกดเริ่ม/ปิด/แขวน)
       const autoStart=(planT&&planT.startMin!=null)?minToHM(planT.startMin):null;
       const autoEnd=(planT&&planT.endMin!=null)?minToHM(planT.endMin):null;
