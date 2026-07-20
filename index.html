@@ -80,10 +80,17 @@ button:focus-visible{outline:2px solid var(--accent)}
 .dayrow .times .mini-f label{font-size:11px;margin-bottom:2px}
 .dayrow .times input{padding:5px 7px;font-size:14px;text-align:center}
 .daytabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px}
-.daytab{flex:0 0 auto;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap;text-align:center}
+.daytab{position:relative;flex:0 0 auto;padding:8px 24px 8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap;text-align:center}
 .daytab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .daytab .d2{font-size:12px;opacity:.85;font-weight:400}
 .daytab.over{outline:2px dashed var(--accent)}
+.daytab .dtdots{position:absolute;top:2px;right:4px;font-size:15px;line-height:1;color:var(--ink-soft);padding:1px 4px;border-radius:5px;font-weight:700}
+.daytab .dtdots:hover{background:rgba(0,0,0,.1)}
+.daytab.active .dtdots{color:#fff}
+.daytab.dayhidden{opacity:.5;border-style:dashed}
+.dtmenu{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);min-width:132px;overflow:hidden;padding:4px 0}
+.dtmenu button{display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:#fff;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;border-radius:0}
+.dtmenu button:hover{background:var(--accent-soft);color:var(--accent)}
 .daycfg{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:12px}
 .daycfg .f{min-width:104px}
 .daycfg .dlabel{font-size:15px;font-weight:700;color:var(--accent);align-self:center}
@@ -455,7 +462,7 @@ function save(){
   try{localStorage.setItem(STORE_KEY,payload);}catch(e){console.error(e);}
   if(BACKEND_URL&&isAdmin){
     lastSyncedJSON=payload; // การแก้ของเราเอง ไม่ต้อง sync กลับ
-    suppressSyncUntil=Date.now()+3500; // งานข้อ 1: กัน admin sync poll อ่าน backend จังหวะก่อนบันทึกเสร็จ (คิวเด้งกลับ)
+    suppressSyncUntil=Date.now()+4500; // งานข้อ 1: กัน admin sync poll อ่าน backend จังหวะก่อนบันทึกเสร็จ (คิวเด้งกลับ)
     fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({state:payload})}).catch(e=>console.error("save backend fail",e));
   }
 }
@@ -1101,14 +1108,28 @@ function render(){
     else{pauseBtn.innerHTML="⏸ พักการประชุม";pauseBtn.classList.remove("resuming");}
   }
 
+  const isViewer=document.body.classList.contains("viewonly");
+  // ผู้ติดตาม: ถ้า activeDay ชี้วันที่ถูกซ่อน ให้ย้ายไปวันที่มองเห็นได้ (วันที่แสดง หรือวันปัจจุบัน)
+  if(isViewer && state.days[activeDay] && !dayVisibleToViewer(activeDay)){
+    const t=todayDayIdx();
+    const na=(t>=0 && dayVisibleToViewer(t))?t:state.days.findIndex((_,i)=>dayVisibleToViewer(i));
+    if(na>=0)activeDay=na;
+  }
   const tabs=document.getElementById("dayTabs");tabs.innerHTML="";
   state.days.forEach((d,i)=>{
+    if(isViewer && !dayVisibleToViewer(i)) return; // ผู้ติดตามเห็นเฉพาะวันที่แสดง + วันปัจจุบัน
     const cnt=state.orgs.filter(o=>o.dayIdx===i).length;
     const doneCnt=state.orgs.filter(o=>o.dayIdx===i&&o.endAct!=null).length;
     const el=document.createElement("div");
-    el.className="daytab"+(i===activeDay?" active":"");
+    el.className="daytab"+(i===activeDay?" active":"")+((!isViewer&&d.hidden)?" dayhidden":"");
     el.innerHTML="วัน"+weekdayTH(d.be)+" "+fmtBEshort(d.be)+'<br><span class="d2">'+doneCnt+"/"+cnt+" หน่วยงาน</span>";
     el.onclick=()=>{activeDay=i;render();};
+    if(!isViewer){
+      const dots=document.createElement("span");
+      dots.className="dtdots"; dots.textContent="\u22EF"; dots.title="ตัวเลือกวัน (เพิ่ม/ลบ/แสดง)";
+      dots.onclick=(ev)=>openDayMenu(i,ev);
+      el.appendChild(dots);
+    }
     tabs.appendChild(el);
   });
 
@@ -1403,8 +1424,14 @@ let qvShowTime=false, qvActiveDay=0;
 function renderQueueView(){
   if(!state)return;
   // แท็บวัน
+  if(state.days[qvActiveDay] && !dayVisibleToViewer(qvActiveDay)){
+    const t=todayDayIdx();
+    const na=(t>=0 && dayVisibleToViewer(t))?t:state.days.findIndex((_,i)=>dayVisibleToViewer(i));
+    if(na>=0)qvActiveDay=na;
+  }
   const tabs=document.getElementById("qvDayTabs");tabs.innerHTML="";
   state.days.forEach((d,i)=>{
+    if(!dayVisibleToViewer(i)) return; // เห็นเฉพาะวันที่แสดง + วันปัจจุบัน
     const cnt=state.orgs.filter(o=>o.dayIdx===i).length;
     const doneCnt=state.orgs.filter(o=>o.dayIdx===i&&o.endAct!=null).length;
     const el=document.createElement("div");
@@ -1493,6 +1520,85 @@ function todayDayIdx(){
   if(!state||!state.days) return -1;
   const t=gregToBE(new Date());
   return state.days.findIndex(d=>d.be&&d.be.d===t.d&&d.be.mo===t.mo&&d.be.yBE===t.yBE);
+}
+
+/* ===== การ์ดวัน: แสดง/ซ่อน + เพิ่ม/ลบ (มีผลกับการคำนวณภาพรวม) ===== */
+// ผู้ติดตามเห็นวันนี้ไหม: เห็นถ้า "ไม่ถูกซ่อน" หรือ "เป็นวันปัจจุบัน"
+function dayVisibleToViewer(i){ const d=state.days[i]; if(!d)return false; return !d.hidden || i===todayDayIdx(); }
+let __dtMenuIdx=-1;
+function closeDayMenu(){ const m=document.getElementById("__dtmenu"); if(m)m.remove(); __dtMenuIdx=-1; document.removeEventListener("click",closeDayMenu); }
+function openDayMenu(i,ev){
+  ev.stopPropagation();
+  if(__dtMenuIdx===i){ closeDayMenu(); return; }
+  closeDayMenu();
+  __dtMenuIdx=i;
+  const d=state.days[i];
+  const rect=ev.currentTarget.getBoundingClientRect();
+  const m=document.createElement("div");
+  m.className="dtmenu"; m.id="__dtmenu";
+  m.style.cssText="position:fixed;z-index:400;top:"+(rect.bottom+4)+"px;left:"+Math.max(6,Math.min(rect.right-132,window.innerWidth-138))+"px";
+  m.innerHTML='<button onclick="dayMenuAction(\'add\','+i+')">＋ เพิ่มวัน</button>'
+    +'<button onclick="dayMenuAction(\'toggle\','+i+')">'+(d.hidden?'👁 แสดง':'🚫 ไม่แสดง')+'</button>'
+    +'<button onclick="dayMenuAction(\'delete\','+i+')" style="color:var(--behind)">🗑 ลบวันนี้</button>';
+  document.body.appendChild(m);
+  setTimeout(function(){ document.addEventListener("click",closeDayMenu); },0);
+}
+function dayMenuAction(act,i){
+  closeDayMenu();
+  if(act==="toggle"){ state.days[i].hidden=!state.days[i].hidden; save(); render(); toast(state.days[i].hidden?"ซ่อนวันนี้จากผู้ติดตามแล้ว":"แสดงวันนี้ให้ผู้ติดตามแล้ว"); }
+  else if(act==="delete"){ deleteDay(i); }
+  else if(act==="add"){ promptAddDay(); }
+}
+function deleteDay(i){
+  if(!state.days[i])return;
+  const label="วัน"+weekdayTH(state.days[i].be)+" "+fmtBEshort(state.days[i].be);
+  const cnt=state.orgs.filter(o=>o.dayIdx===i).length;
+  if(!confirm("ลบ "+label+" ? หน่วยงาน "+cnt+" หน่วยจะถูกย้ายกลับไปที่คลัง"))return;
+  // ย้ายหน่วยงานของวันนี้กลับคลัง
+  state.orgs.filter(o=>o.dayIdx===i).forEach(o=>{o.dayIdx=null;o.seq=0;o.startAct=null;o.endAct=null;o.suspended=false;o.planStart=null;o.planEnd=null;o.baseEnd=null;o.planEdited=false;});
+  // ปรับ index ของหน่วยงานในวันที่อยู่หลังจากวันที่ลบ
+  state.orgs.forEach(o=>{ if(o.dayIdx!=null && o.dayIdx>i) o.dayIdx--; });
+  state.days.splice(i,1);
+  if(activeDay>i) activeDay--;
+  if(activeDay>=state.days.length) activeDay=Math.max(0,state.days.length-1);
+  save(); render(); toast("ลบวันแล้ว · ย้าย "+cnt+" หน่วยงานกลับคลัง");
+}
+function addDay(be){
+  const src=state.days[activeDay]||{};
+  const nd={be:be,dow:beToGreg(be).getDay(),
+    start:src.start||"10:00",end:src.end||"20:00",
+    lunchS:src.lunchS||"12:00",lunchE:src.lunchE||"13:00",
+    dinnerS:src.dinnerS||"17:00",dinnerE:src.dinnerE||"18:00",
+    target:0,lunchSeq:null,dinnerSeq:null,
+    lunchStartAct:null,lunchEndAct:null,dinnerStartAct:null,dinnerEndAct:null,
+    meetingPaused:false,pauseType:null,pauseOrgId:null,lastActivity:null,hidden:false};
+  let idx=state.days.findIndex(d=>beToGreg(d.be)>beToGreg(be));
+  if(idx<0)idx=state.days.length;
+  state.orgs.forEach(o=>{ if(o.dayIdx!=null && o.dayIdx>=idx) o.dayIdx++; });
+  state.days.splice(idx,0,nd);
+  activeDay=idx;
+  save(); render(); toast("เพิ่มวันแล้ว");
+}
+function promptAddDay(){
+  const last=state.days.length?state.days[state.days.length-1].be:gregToBE(new Date());
+  const g=beToGreg(last); g.setDate(g.getDate()+1);
+  const defVal=g.getFullYear()+"-"+String(g.getMonth()+1).padStart(2,"0")+"-"+String(g.getDate()).padStart(2,"0");
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:340;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center";
+  ov.innerHTML='<div style="background:#fff;border-radius:12px;padding:22px 24px;max-width:320px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.25)">'
+    +'<div style="font-size:16px;font-weight:700;margin-bottom:10px">เพิ่มวันประชุม</div>'
+    +'<input id="__addDayInput" type="date" value="'+defVal+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px">'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
+    +'<button id="__addDayCancel">ยกเลิก</button><button id="__addDayOk" class="btn-primary">เพิ่ม</button></div></div>';
+  document.body.appendChild(ov);
+  const close=function(){ ov.remove(); };
+  ov.querySelector("#__addDayCancel").onclick=close;
+  ov.addEventListener("click",function(e){ if(e.target===ov)close(); });
+  ov.querySelector("#__addDayOk").onclick=function(){
+    const v=ov.querySelector("#__addDayInput").value;const m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m){toast("เลือกวันที่ก่อน");return;}
+    close(); addDay({d:+m[3],mo:+m[2],yBE:(+m[1])+543});
+  };
 }
 function resetAll(){
   const el=document.getElementById("pwInput"); if(el){el.value="";el.type="password";}
@@ -1653,7 +1759,9 @@ function requireAdminAuth(){
       if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return; // กำลังแก้ไขช่องอยู่ อย่าทับ
       if(document.getElementById("resultWrap").style.display==="none") return; // อยู่หน้าตั้งค่า/ยังไม่ล็อกอิน ไม่ซิงก์
       const remote=await loadRawFromBackend();
+      if(Date.now()<suppressSyncUntil) return; // เราแก้ระหว่างที่กำลังอ่าน backend อยู่ → ทิ้งค่าที่อ่านมา (กันหน่วยงานเด้งกลับคลัง)
       if(remote==null || remote===lastSyncedJSON) return; // ไม่มีการเปลี่ยนจากเครื่องอื่น (รวมถึงของเราเอง)
+      if(remote===JSON.stringify(state)){ lastSyncedJSON=remote; return; } // ตรงกับ state ปัจจุบันแล้ว ไม่ต้องทับ
       try{
         const st=JSON.parse(remote);
         if(!st||!st.days) return;
