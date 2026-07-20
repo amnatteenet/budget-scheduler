@@ -320,6 +320,10 @@ tr.drop-after td{box-shadow:inset 0 -3px 0 0 var(--accent)}
   <div class="pool" id="poolBox">
     <h3>คลังหน่วยงานที่ยังไม่จัดวัน (<span id="poolCount">0</span>)<span class="edit-only"> — กด "＋ วันนี้" เพื่อเพิ่มเข้าวันที่เปิดอยู่</span></h3>
     <div class="poolchips" id="poolChips"></div>
+    <div class="edit-only" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input id="newOrgName" type="text" placeholder="เพิ่มหน่วยงานใหม่เข้าคลัง" style="flex:1;min-width:200px;max-width:340px" onkeydown="if(event.key==='Enter'){event.preventDefault();addOrgToPool();}">
+      <button class="btn-primary" onclick="addOrgToPool()">＋ เพิ่มเข้าคลัง</button>
+    </div>
     <div class="edit-only" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
       <div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:6px">ก้อนเวลาพัก (แต่ละวันใส่ได้อย่างละ 1 ครั้ง)</div>
       <div class="poolchips" id="breakChips"></div>
@@ -1537,7 +1541,8 @@ function openDayMenu(i,ev){
   const m=document.createElement("div");
   m.className="dtmenu"; m.id="__dtmenu";
   m.style.cssText="position:fixed;z-index:400;top:"+(rect.bottom+4)+"px;left:"+Math.max(6,Math.min(rect.right-132,window.innerWidth-138))+"px";
-  m.innerHTML='<button onclick="dayMenuAction(\'add\','+i+')">＋ เพิ่มวัน</button>'
+  m.innerHTML='<button onclick="dayMenuAction(\'edit\','+i+')">✏️ แก้ไขวันที่</button>'
+    +'<button onclick="dayMenuAction(\'add\','+i+')">＋ เพิ่มวัน</button>'
     +'<button onclick="dayMenuAction(\'toggle\','+i+')">'+(d.hidden?'👁 แสดง':'🚫 ไม่แสดง')+'</button>'
     +'<button onclick="dayMenuAction(\'delete\','+i+')" style="color:var(--behind)">🗑 ลบวันนี้</button>';
   document.body.appendChild(m);
@@ -1548,6 +1553,7 @@ function dayMenuAction(act,i){
   if(act==="toggle"){ state.days[i].hidden=!state.days[i].hidden; save(); render(); toast(state.days[i].hidden?"ซ่อนวันนี้จากผู้ติดตามแล้ว":"แสดงวันนี้ให้ผู้ติดตามแล้ว"); }
   else if(act==="delete"){ deleteDay(i); }
   else if(act==="add"){ promptAddDay(); }
+  else if(act==="edit"){ promptEditDay(i); }
 }
 function deleteDay(i){
   if(!state.days[i])return;
@@ -1578,6 +1584,50 @@ function addDay(be){
   state.days.splice(idx,0,nd);
   activeDay=idx;
   save(); render(); toast("เพิ่มวันแล้ว");
+}
+function pickDate(title,defVal,onPick){
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:340;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center";
+  ov.innerHTML='<div style="background:#fff;border-radius:12px;padding:22px 24px;max-width:320px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.25)">'
+    +'<div style="font-size:16px;font-weight:700;margin-bottom:10px">'+title+'</div>'
+    +'<input id="__pdInput" type="date" value="'+defVal+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px">'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
+    +'<button id="__pdCancel">ยกเลิก</button><button id="__pdOk" class="btn-primary">ตกลง</button></div></div>';
+  document.body.appendChild(ov);
+  const close=function(){ ov.remove(); };
+  ov.querySelector("#__pdCancel").onclick=close;
+  ov.addEventListener("click",function(e){ if(e.target===ov)close(); });
+  ov.querySelector("#__pdOk").onclick=function(){
+    const v=ov.querySelector("#__pdInput").value;const m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m){toast("เลือกวันที่ก่อน");return;}
+    close(); onPick({d:+m[3],mo:+m[2],yBE:(+m[1])+543});
+  };
+}
+function promptEditDay(i){
+  const be=state.days[i].be;
+  const defVal=(be.yBE-543)+"-"+String(be.mo).padStart(2,"0")+"-"+String(be.d).padStart(2,"0");
+  pickDate("แก้ไขวันที่ประชุม",defVal,function(nb){ editDayDate(i,nb); });
+}
+function editDayDate(i,be){
+  if(!state.days[i])return;
+  state.days[i].be=be; state.days[i].dow=beToGreg(be).getDay();
+  const edited=state.days[i];
+  // แนบหน่วยงานไว้กับวันแต่ละวัน แล้วเรียงวันใหม่ตามวันที่ (คง dayIdx ให้ถูกต้อง)
+  const withOrgs=state.days.map((d,idx)=>({d:d, orgs:state.orgs.filter(o=>o.dayIdx===idx)}));
+  withOrgs.sort(function(a,b){ return beToGreg(a.d.be)-beToGreg(b.d.be); });
+  state.days=withOrgs.map(function(x){ return x.d; });
+  withOrgs.forEach(function(x,newIdx){ x.orgs.forEach(function(o){ o.dayIdx=newIdx; }); });
+  activeDay=state.days.indexOf(edited);
+  save(); render(); toast("แก้ไขวันที่แล้ว");
+}
+function addOrgToPool(){
+  const inp=document.getElementById("newOrgName");
+  const name=((inp&&inp.value)||"").trim();
+  if(!name){toast("พิมพ์ชื่อหน่วยงานก่อน");return;}
+  const maxId=state.orgs.reduce(function(m,o){ return Math.max(m,o.id); },0);
+  state.orgs.push({id:maxId+1,name:name,dayIdx:null,seq:0,budget:null,startAct:null,endAct:null,suspended:false,planStart:null,planEnd:null,baseEnd:null});
+  if(inp)inp.value="";
+  save(); render(); toast("เพิ่ม “"+name+"” เข้าคลังแล้ว");
 }
 function promptAddDay(){
   const last=state.days.length?state.days[state.days.length-1].be:gregToBE(new Date());
