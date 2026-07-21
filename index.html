@@ -1539,6 +1539,14 @@ function todayDayIdx(){
 
 /* ===== 🎙 ฟังเสียงห้องประชุม → เสนอผ่าน Telegram ให้ยืนยัน ===== */
 let voiceOn=false, voiceRecog=null, voiceLastHeard="", voiceRecent={};
+// รหัสประจำเครื่อง (คงอยู่ข้ามการ refresh) ใช้ระบุว่าเครื่องไหนเป็น "ตัวรับเสียง"
+const DEVICE_ID=(function(){
+  try{
+    let d=localStorage.getItem("bs_device_id");
+    if(!d){ d="dev_"+Math.random().toString(36).slice(2,10)+Date.now().toString(36); localStorage.setItem("bs_device_id",d); }
+    return d;
+  }catch(e){ return "dev_tmp"+Math.random().toString(36).slice(2,8); }
+})();
 const VOICE_START_WORDS=["ขอเชิญ","เชิญ","ลำดับต่อไป","ต่อไป"];
 const VOICE_FINISH_WORDS=["ขอบคุณ","มีมติปรับลด","ปรับลด"];
 function normTH(s){return String(s||"").replace(/\s+/g,"").replace(/[()\[\]"'.,\-]/g,"");}
@@ -1565,20 +1573,26 @@ function updateVoiceBtn(){
   const l=document.getElementById("voiceHeard");
   if(l)l.textContent=voiceLastHeard?("ได้ยิน: "+voiceLastHeard.slice(-70)):"";
 }
-function toggleVoice(){
+// เริ่ม/หยุดฟังเสียง — silent=true คือเรียกอัตโนมัติตอนโหลดหน้า (ไม่ต้องเด้ง toast รก)
+function toggleVoice(forceOn, silent){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){toast("เบราว์เซอร์นี้ไม่รองรับการฟังเสียง — ใช้ Chrome");return;}
-  voiceOn=!voiceOn;
+  voiceOn=(forceOn===true||forceOn===false)?forceOn:!voiceOn;
+  try{ localStorage.setItem("bs_voice_on", voiceOn?"1":"0"); }catch(e){}
+  // ยึดสิทธิ์ "เครื่องรับเสียง" มาที่เครื่องนี้ → เครื่องอื่นจะปิดไมค์ให้อัตโนมัติ
+  if(voiceOn && BACKEND_URL){
+    fetch(BACKEND_URL+"?action=voiceClaimMic&dev="+encodeURIComponent(DEVICE_ID)+"&t="+Date.now()).catch(function(){});
+  }
   if(voiceOn){
     voiceRecog=new SR();
     voiceRecog.lang="th-TH";voiceRecog.continuous=true;voiceRecog.interimResults=false;
     voiceRecog.onresult=function(e){for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)onHeard(e.results[i][0].transcript);}};
     voiceRecog.onend=function(){if(voiceOn){try{voiceRecog.start();}catch(err){}}}; // ฟังต่อเนื่อง: เริ่มใหม่อัตโนมัติเมื่อถูกตัด
     voiceRecog.onerror=function(e){if(e.error==="not-allowed"||e.error==="service-not-allowed"){voiceOn=false;updateVoiceBtn();toast("ไม่ได้รับสิทธิ์ไมโครโฟน");}};
-    try{voiceRecog.start();toast("เริ่มฟังเสียงห้องประชุมแล้ว");}catch(err){}
+    try{voiceRecog.start();if(!silent)toast("เริ่มฟังเสียงห้องประชุมแล้ว · เครื่องนี้เป็นตัวรับเสียง");}catch(err){}
   }else{
     try{if(voiceRecog)voiceRecog.stop();}catch(err){}
-    voiceRecog=null;toast("หยุดฟังเสียงแล้ว");
+    voiceRecog=null;if(!silent)toast("หยุดฟังเสียงแล้ว");
   }
   updateVoiceBtn();
 }
@@ -1613,9 +1627,15 @@ function proposeVoice(type,org,atMin,text){
 async function pollVoiceConfirmed(){
   if(!BACKEND_URL||!isAdmin||!state)return;
   try{
-    const r=await fetch(BACKEND_URL+"?action=voiceConfirmed&t="+Date.now());
+    const r=await fetch(BACKEND_URL+"?action=voiceConfirmed&dev="+encodeURIComponent(DEVICE_ID)+"&t="+Date.now());
     const j=await r.json();
-    if(!j||!j.ok||!j.items||!j.items.length)return;
+    if(!j||!j.ok)return;
+    // ถ้ามีเครื่องอื่นมายึดสิทธิ์รับเสียงไป → ปิดไมค์เครื่องนี้อัตโนมัติ
+    if(voiceOn && j.owner && j.owner!==DEVICE_ID){
+      toggleVoice(false,true);
+      toast("การรับเสียงถูกย้ายไปเครื่องอื่นแล้ว · ปิดไมค์เครื่องนี้");
+    }
+    if(!j.items||!j.items.length)return;
     for(const it of j.items){
       const o=state.orgs.find(function(x){return x.id===Number(it.orgId);});
       if(o){
@@ -1930,7 +1950,13 @@ function requireAdminAuth(){
     },3000);
   }
   // 🎙 แอดมิน: เช็คทุก 4 วิ ว่ามีรายการที่กดยืนยันใน Telegram แล้วหรือยัง
-  if(BACKEND_URL && isAdmin){ setInterval(pollVoiceConfirmed,4000); }
+  if(BACKEND_URL && isAdmin){
+    setInterval(pollVoiceConfirmed,4000);
+    // เครื่องที่เคยเปิดไมค์ไว้ → เปิดต่อเองหลัง refresh
+    // (ถ้าเครื่องนี้ยังไม่เคยให้สิทธิ์ไมค์ Chrome จะเด้งขออนุญาตตรงนี้ ให้สิทธิ์ครั้งเดียวแล้วจำตลอด)
+    let _wasOn=false; try{ _wasOn=localStorage.getItem("bs_voice_on")==="1"; }catch(e){}
+    if(_wasOn) setTimeout(function(){ toggleVoice(true,true); },1200);
+  }
   startPresence_(); // เริ่มนับ/แสดงผู้ติดตาม
   setInterval(()=>{
     if(!state)return;
