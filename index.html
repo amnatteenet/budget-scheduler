@@ -170,6 +170,7 @@ tr.breakrow td{background:#fff8ec;border-top:2px solid #f0d090;border-bottom:2px
 tr.pauserow td{padding:0}
 .pausebar{background:var(--behind);color:#fff;text-align:center;font-weight:700;font-size:15px;padding:8px;letter-spacing:1px;animation:pausepulse 1.5s ease-in-out infinite}
 .expandbtn.resuming{background:var(--ahead);color:#fff;border-color:var(--ahead)}
+.expandbtn.listening{background:var(--behind);color:#fff;border-color:var(--behind);animation:pausepulse 1.5s ease-in-out infinite}
 .btn-pausemeeting{background:var(--behind);color:#fff;border-color:var(--behind)}
 .btn-pausemeeting:hover{background:#a5301f;color:#fff;border-color:#a5301f}
 .btn-pausemeeting.resuming{background:var(--ahead);color:#fff;border-color:var(--ahead)}
@@ -319,6 +320,10 @@ tr.drop-after td{box-shadow:inset 0 -3px 0 0 var(--accent)}
   <div id="queueSection">
   <div class="expandbar edit-only" style="justify-content:space-between">
     <button class="expandbtn btn-pausemeeting" id="pauseMeetingBtn" onclick="toggleMeetingPause()">⏸ พักการประชุม</button>
+    <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:center;min-width:0">
+      <button class="expandbtn" id="voiceBtn" onclick="toggleVoice()">🎙 ฟังเสียงห้องประชุม</button>
+      <span id="voiceHeard" style="font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px"></span>
+    </div>
     <button class="expandbtn" id="expandBtn" onclick="toggleFullscreen()"><span id="expandIcon">⤢</span> <span id="expandLabel">ขยายคิวเต็มจอ</span></button>
   </div>
 
@@ -918,10 +923,11 @@ function applyQueueOrder(){
 }
 
 /* ---- org actions ---- */
-function startOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=minToHM(currentClock());const dd=state.days[o.dayIdx];if(dd)dd.lastActivity=null;recalcDayBudgets(o.dayIdx);save();render();}
+// atMin = เวลา (นาทีของวัน) ที่ต้องการบันทึก — ถ้าไม่ส่งมาใช้นาฬิกาปัจจุบัน (ใช้ตอนยืนยันจาก Telegram ให้ได้เวลาที่ "ตรวจจับได้" ไม่ใช่เวลาที่กดยืนยัน)
+function startOrg(id,atMin){const o=state.orgs.find(x=>x.id===id);if(!o)return;o.startAct=minToHM(atMin!=null?atMin:currentClock());const dd=state.days[o.dayIdx];if(dd)dd.lastActivity=null;recalcDayBudgets(o.dayIdx);save();render();}
 // ประชุมต่ออัตโนมัติเมื่อกดปุ่มจัดการหน่วยงาน (ปิด/แขวน/รีเซ็ต)
 function resumeMeetingIfPaused(dayIdx){const d=state.days[dayIdx];if(d&&d.meetingPaused){d.meetingPaused=false;d.pauseType=null;d.pauseOrgId=null;}}
-function finishOrg(id){const o=state.orgs.find(x=>x.id===id);if(o.startAct==null)o.startAct=minToHM(currentClock());o.endAct=minToHM(currentClock());resumeMeetingIfPaused(o.dayIdx);reflowWaiting(o.dayIdx);save();render();toast("บันทึกและคำนวณใหม่แล้ว");}
+function finishOrg(id,atMin){const o=state.orgs.find(x=>x.id===id);if(!o)return;const _t=(atMin!=null?atMin:currentClock());if(o.startAct==null)o.startAct=minToHM(_t);o.endAct=minToHM(_t);resumeMeetingIfPaused(o.dayIdx);reflowWaiting(o.dayIdx);save();render();toast("บันทึกและคำนวณใหม่แล้ว");}
 function undoOrg(id){const o=state.orgs.find(x=>x.id===id);o.startAct=null;o.endAct=null;resumeMeetingIfPaused(o.dayIdx);reflowWaiting(o.dayIdx);save();render();}
 
 /* ---- queue management ---- */
@@ -1531,6 +1537,96 @@ function todayDayIdx(){
   return state.days.findIndex(d=>d.be&&d.be.d===t.d&&d.be.mo===t.mo&&d.be.yBE===t.yBE);
 }
 
+/* ===== 🎙 ฟังเสียงห้องประชุม → เสนอผ่าน Telegram ให้ยืนยัน ===== */
+let voiceOn=false, voiceRecog=null, voiceLastHeard="", voiceRecent={};
+const VOICE_START_WORDS=["ขอเชิญ","เชิญ","ลำดับต่อไป","ต่อไป"];
+const VOICE_FINISH_WORDS=["ขอบคุณ","มีมติปรับลด","ปรับลด"];
+function normTH(s){return String(s||"").replace(/\s+/g,"").replace(/[()\[\]"'.,\-]/g,"");}
+// ความยาวสตริงย่อยที่ตรงกันยาวที่สุด — เทียบชื่อหน่วยงานแบบยืดหยุ่น เพราะ STT ไทยมักถอดเพี้ยน
+function lcsLen(a,b){
+  if(!a||!b)return 0;
+  let best=0;const dp=new Array(b.length+1).fill(0);
+  for(let i=1;i<=a.length;i++){let prev=0;
+    for(let j=1;j<=b.length;j++){const tmp=dp[j];dp[j]=(a[i-1]===b[j-1])?prev+1:0;if(dp[j]>best)best=dp[j];prev=tmp;}}
+  return best;
+}
+function matchOrgInText(text,candidates){
+  const t=normTH(text);let best=null,bestScore=0;
+  candidates.forEach(function(o){
+    const n=normTH(o.name);if(n.length<4)return;
+    const sc=lcsLen(n,t);const need=Math.max(6,Math.floor(n.length*0.4));
+    if(sc>=need&&sc>bestScore){bestScore=sc;best=o;}
+  });
+  return best?{org:best,score:bestScore}:null;
+}
+function updateVoiceBtn(){
+  const b=document.getElementById("voiceBtn");
+  if(b){b.innerHTML=voiceOn?"🎙 กำลังฟัง…":"🎙 ฟังเสียงห้องประชุม";b.classList.toggle("listening",voiceOn);}
+  const l=document.getElementById("voiceHeard");
+  if(l)l.textContent=voiceLastHeard?("ได้ยิน: "+voiceLastHeard.slice(-70)):"";
+}
+function toggleVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast("เบราว์เซอร์นี้ไม่รองรับการฟังเสียง — ใช้ Chrome");return;}
+  voiceOn=!voiceOn;
+  if(voiceOn){
+    voiceRecog=new SR();
+    voiceRecog.lang="th-TH";voiceRecog.continuous=true;voiceRecog.interimResults=false;
+    voiceRecog.onresult=function(e){for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)onHeard(e.results[i][0].transcript);}};
+    voiceRecog.onend=function(){if(voiceOn){try{voiceRecog.start();}catch(err){}}}; // ฟังต่อเนื่อง: เริ่มใหม่อัตโนมัติเมื่อถูกตัด
+    voiceRecog.onerror=function(e){if(e.error==="not-allowed"||e.error==="service-not-allowed"){voiceOn=false;updateVoiceBtn();toast("ไม่ได้รับสิทธิ์ไมโครโฟน");}};
+    try{voiceRecog.start();toast("เริ่มฟังเสียงห้องประชุมแล้ว");}catch(err){}
+  }else{
+    try{if(voiceRecog)voiceRecog.stop();}catch(err){}
+    voiceRecog=null;toast("หยุดฟังเสียงแล้ว");
+  }
+  updateVoiceBtn();
+}
+function onHeard(text){
+  voiceLastHeard=text;updateVoiceBtn();
+  if(!state||!isAdmin)return;
+  const d=state.days[activeDay];if(!d)return;
+  const nowMin=currentClock();
+  const hasFinish=VOICE_FINISH_WORDS.some(function(w){return text.indexOf(w)>=0;});
+  const hasStart=VOICE_START_WORDS.some(function(w){return text.indexOf(w)>=0;});
+  const inProg=state.orgs.find(function(o){return o.dayIdx===activeDay&&o.startAct!=null&&o.endAct==null;});
+  if(hasFinish&&inProg)proposeVoice("finish",inProg,nowMin,text);
+  if(hasStart){
+    const waiting=state.orgs.filter(function(o){return o.dayIdx===activeDay&&o.startAct==null&&o.endAct==null;});
+    const m=matchOrgInText(text,waiting);
+    if(m)proposeVoice("start",m.org,nowMin,text);
+  }
+}
+function proposeVoice(type,org,atMin,text){
+  const key=type+":"+org.id,now=Date.now();
+  if(voiceRecent[key]&&now-voiceRecent[key]<90000)return; // กันเสนอซ้ำภายใน 90 วินาที
+  voiceRecent[key]=now;
+  const dayLabel="วัน"+weekdayTH(state.days[activeDay].be)+" "+fmtBEshort(state.days[activeDay].be);
+  // ใช้ GET เสมอ — POST ที่ backend ไม่รู้จัก action อาจไปตกที่คำสั่งบันทึก state แล้วล้างข้อมูล
+  const qs="?action=voiceProposal&type="+encodeURIComponent(type)+"&orgId="+org.id
+    +"&orgName="+encodeURIComponent(org.name)+"&atMin="+atMin+"&atHM="+encodeURIComponent(minToHM(atMin))
+    +"&heard="+encodeURIComponent(String(text).slice(0,300))+"&dayLabel="+encodeURIComponent(dayLabel)+"&t="+Date.now();
+  fetch(BACKEND_URL+qs).catch(function(){});
+  toast((type==="start"?"เสนอ เริ่ม ":"เสนอ ปิด ")+org.name+" → ส่ง Telegram แล้ว");
+}
+// ดึงรายการที่กดยืนยันใน Telegram แล้ว มาลงมือจริง (ใช้ "เวลาที่ตรวจจับได้" ไม่ใช่เวลาที่กดยืนยัน)
+async function pollVoiceConfirmed(){
+  if(!BACKEND_URL||!isAdmin||!state)return;
+  try{
+    const r=await fetch(BACKEND_URL+"?action=voiceConfirmed&t="+Date.now());
+    const j=await r.json();
+    if(!j||!j.ok||!j.items||!j.items.length)return;
+    for(const it of j.items){
+      const o=state.orgs.find(function(x){return x.id===Number(it.orgId);});
+      if(o){
+        if(it.type==="start"&&o.startAct==null){startOrg(o.id,Number(it.atMin));toast("ยืนยันจาก Telegram: เริ่ม "+o.name);}
+        else if(it.type==="finish"&&o.endAct==null){finishOrg(o.id,Number(it.atMin));toast("ยืนยันจาก Telegram: ปิด "+o.name);}
+      }
+      fetch(BACKEND_URL+"?action=voiceApplied&id="+encodeURIComponent(it.id)+"&t="+Date.now()).catch(function(){});
+    }
+  }catch(e){}
+}
+
 /* ===== การ์ดวัน: แสดง/ซ่อน + เพิ่ม/ลบ (มีผลกับการคำนวณภาพรวม) ===== */
 // ผู้ติดตามเห็นวันนี้ไหม: เห็นถ้า "ไม่ถูกซ่อน" หรือ "เป็นวันปัจจุบัน"
 function dayVisibleToViewer(i){ const d=state.days[i]; if(!d)return false; return !d.hidden || i===todayDayIdx(); }
@@ -1833,6 +1929,8 @@ function requireAdminAuth(){
       }catch(e){}
     },3000);
   }
+  // 🎙 แอดมิน: เช็คทุก 4 วิ ว่ามีรายการที่กดยืนยันใน Telegram แล้วหรือยัง
+  if(BACKEND_URL && isAdmin){ setInterval(pollVoiceConfirmed,4000); }
   startPresence_(); // เริ่มนับ/แสดงผู้ติดตาม
   setInterval(()=>{
     if(!state)return;
