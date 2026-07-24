@@ -49,8 +49,8 @@ body.viewonly .edit-only{display:none !important}
 .qv-empty{text-align:center;color:var(--ink-soft);padding:40px 20px}
 /* ประกาศบนหน้าติดตามคิว */
 .qv-announce{background:#fff8e1;border:1px solid #f0d98a;border-left:6px solid var(--warn);border-radius:10px;padding:12px 16px;margin-bottom:10px}
-.qv-announce .qa-label{font-size:12px;font-weight:700;color:var(--warn);letter-spacing:.5px;margin-bottom:4px}
-.qv-announce .qa-text{font-size:17px;color:var(--ink);line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.qv-announce .qa-label{font-size:22px;font-weight:800;color:var(--warn);margin-bottom:4px}
+.qv-announce .qa-text{font-size:16px;color:var(--ink);line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .qv-announce .qa-text.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .qv-announce .qa-more{margin-top:6px;font-size:14px;color:var(--accent);font-weight:700;cursor:pointer;background:none;border:none;padding:0}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
@@ -1454,8 +1454,8 @@ function defaultAnnounceExpiry(){
 }
 function annExpiryLabel(ts){
   if(!ts)return "-";
-  const d=new Date(ts);
-  return d.getDate()+" "+THMON_SHORT[d.getMonth()+1]+" "+(d.getFullYear()+543)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" น.";
+  const d=new Date(ts);const pad=n=>String(n).padStart(2,"0");
+  return "วัน"+THDAYS[d.getDay()]+" "+d.getDate()+" "+THMON_SHORT[d.getMonth()+1]+" "+(d.getFullYear()+543)+" "+pad(d.getHours())+":"+pad(d.getMinutes())+" น.";
 }
 function addAnnouncement(text,expiresAt){
   if(!state)return;
@@ -1468,44 +1468,82 @@ function removeAnnouncement(id){
   state.announcements=state.announcements.filter(a=>a.id!==id);
   save();render();
 }
-function openAnnounceDialog(){
+let __annEditId=null;
+function openAnnounceDialog(editId){
   if(!state){toast("ยังไม่มีข้อมูล");return;}
-  const def=defaultAnnounceExpiry();const pad=n=>String(n).padStart(2,"0");
-  const defVal=def.getFullYear()+"-"+pad(def.getMonth()+1)+"-"+pad(def.getDate())+"T"+pad(def.getHours())+":"+pad(def.getMinutes());
+  __annEditId = (typeof editId==="string") ? editId : null;
+  const target = __annEditId ? (state.announcements||[]).find(a=>a.id===__annEditId) : null;
+  const pad=n=>String(n).padStart(2,"0");
+  const expD = target ? new Date(target.expiresAt) : defaultAnnounceExpiry();
+  const dateVal = expD.getFullYear()+"-"+pad(expD.getMonth()+1)+"-"+pad(expD.getDate());
+  const timeHM = pad(expD.getHours())+":"+pad(expD.getMinutes());
   const existing=(state.announcements||[]).filter(a=>!a.expiresAt||a.expiresAt>Date.now()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   let listHtml="";
   if(existing.length){
     listHtml='<div style="margin-top:16px;border-top:1px dashed var(--line);padding-top:10px"><div style="font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:6px">ประกาศที่แสดงอยู่ ('+existing.length+')</div>';
     existing.forEach(a=>{
-      listHtml+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px">'
+      listHtml+='<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px">'
         +'<div style="flex:1;font-size:13px;background:var(--warn-bg);border:1px solid #f0d98a;border-radius:6px;padding:6px 8px">'+escapeHtml(a.text.length>90?a.text.slice(0,90)+"…":a.text)+'<br><span style="font-size:11px;color:var(--ink-soft)">หมดอายุ '+annExpiryLabel(a.expiresAt)+'</span></div>'
+        +'<button class="mini" onclick="openAnnounceDialog(\''+a.id+'\')">แก้ไข</button>'
         +'<button class="mini btn-danger" onclick="removeAnnouncement(\''+a.id+'\');closeAnnounceDialog()">ลบ</button></div>';
     });
     listHtml+='</div>';
   }
+  closeAnnounceDialog();
   const ov=document.createElement("div");ov.id="__annDialog";
   ov.style.cssText="position:fixed;inset:0;z-index:340;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px";
   ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:22px 24px;max-width:480px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.25);max-height:90vh;overflow:auto">'
-    +'<div style="font-size:17px;font-weight:700;margin-bottom:12px">📣 เพิ่มประกาศ</div>'
+    +'<div style="font-size:17px;font-weight:700;margin-bottom:12px">📣 '+(__annEditId?"แก้ไขประกาศ":"เพิ่มประกาศ")+'</div>'
     +'<label>ข้อความประกาศ</label><textarea id="__annText" rows="4" placeholder="พิมพ์ข้อความประกาศ..." style="width:100%"></textarea>'
-    +'<label style="margin-top:10px">วันหมดอายุของประกาศ</label><input id="__annExp" type="datetime-local" value="'+defVal+'" style="width:100%">'
-    +'<div class="hint" style="margin-top:4px">ค่าเริ่มต้น: ลงก่อน 14:00 → หมดอายุ 23:00 ของวันนี้ · ลงตั้งแต่ 14:00 → หมดอายุ 23:00 ของวันถัดไป (แก้ได้)</div>'
+    +'<label style="margin-top:12px">วันและเวลาหมดอายุ</label>'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      +'<div class="datewrap" style="flex:1;min-width:190px"><button type="button" class="datebtn" id="__annDateBtn" onclick="annOpenDatePicker()">— เลือกวัน —</button>'
+      +'<input id="__annDateInput" type="date" class="datehidden" value="'+dateVal+'" onchange="annOnDatePick()"></div>'
+      +'<span id="__annTimeWrap"></span><span style="font-size:14px;color:var(--ink-soft)">น.</span>'
+    +'</div>'
+    +'<div id="__annPreview" style="font-size:14px;color:var(--accent);font-weight:600;margin-top:6px"></div>'
+    +'<div class="hint" style="margin-top:2px">ค่าเริ่มต้น: ลงก่อน 14:00 → 23:00 วันนี้ · ลงตั้งแต่ 14:00 → 23:00 วันถัดไป</div>'
     +listHtml
-    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button onclick="closeAnnounceDialog()">ปิด</button><button class="btn-primary" onclick="submitAnnounce()">เพิ่มประกาศ</button></div></div>';
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button onclick="closeAnnounceDialog()">ปิด</button><button class="btn-primary" onclick="submitAnnounce()">'+(__annEditId?"บันทึกการแก้ไข":"เพิ่มประกาศ")+'</button></div></div>';
   document.body.appendChild(ov);
+  if(target)document.getElementById("__annText").value=target.text;
+  document.getElementById("__annTimeWrap").innerHTML=timeSelect(timeHM,"annTimeChanged");
+  annOnDatePick();
   ov.addEventListener("click",function(e){if(e.target===ov)closeAnnounceDialog();});
-  setTimeout(function(){var t=document.getElementById("__annText");if(t)t.focus();},50);
+  setTimeout(function(){var t=document.getElementById("__annText");if(t){t.focus();if(target)t.setSelectionRange(t.value.length,t.value.length);}},50);
 }
 function closeAnnounceDialog(){const el=document.getElementById("__annDialog");if(el)el.remove();}
+function annOpenDatePicker(){const el=document.getElementById("__annDateInput");if(el.showPicker){try{el.showPicker();return;}catch(e){}}el.focus();el.click();}
+function annOnDatePick(){
+  const be=beFromInput("__annDateInput");const btn=document.getElementById("__annDateBtn");
+  if(be){btn.textContent="วัน"+weekdayTH(be)+" "+fmtBEshort(be);btn.classList.add("set");}
+  else{btn.textContent="— เลือกวัน —";btn.classList.remove("set");}
+  annUpdatePreview();
+}
+window.annTimeChanged=function(){annUpdatePreview();};
+function annUpdatePreview(){
+  const el=document.getElementById("__annPreview");if(!el)return;
+  const be=beFromInput("__annDateInput");const tw=document.querySelector("#__annTimeWrap .timesel");
+  if(!be||!tw){el.textContent="";return;}
+  el.textContent="⏱ หมดอายุ: วัน"+weekdayTH(be)+" "+fmtBEshort(be)+" เวลา "+timeSelVal(tw)+" น.";
+}
 function submitAnnounce(){
   const text=(document.getElementById("__annText").value||"").trim();
   if(!text){toast("พิมพ์ข้อความประกาศก่อน");return;}
-  const v=document.getElementById("__annExp").value;
-  let exp=v?new Date(v).getTime():defaultAnnounceExpiry().getTime();
-  if(isNaN(exp))exp=defaultAnnounceExpiry().getTime();
+  const be=beFromInput("__annDateInput");const tw=document.querySelector("#__annTimeWrap .timesel");
+  let exp;
+  if(be&&tw){const g=beToGreg(be);const p=timeSelVal(tw).split(":");g.setHours(+p[0],+p[1],0,0);exp=g.getTime();}
+  else exp=defaultAnnounceExpiry().getTime();
+  const editId=__annEditId;__annEditId=null;
   closeAnnounceDialog();
-  addAnnouncement(text,exp);
-  toast("เพิ่มประกาศแล้ว");
+  if(editId){ updateAnnouncement(editId,text,exp); toast("บันทึกการแก้ไขแล้ว"); }
+  else { addAnnouncement(text,exp); toast("เพิ่มประกาศแล้ว"); }
+}
+function updateAnnouncement(id,text,expiresAt){
+  if(!state||!state.announcements)return;
+  const a=state.announcements.find(x=>x.id===id);
+  if(a){a.text=text;a.expiresAt=expiresAt;}
+  save();render();
 }
 // แสดงประกาศบนหน้าติดตามคิว — rebuild เฉพาะเมื่อชุดประกาศเปลี่ยน (คงสถานะขยาย/ย่อ)
 function renderQvAnnounce(){
